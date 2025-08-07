@@ -1,0 +1,41 @@
+body {
+  font-family: 'Orbitron', sans-serif;
+  background: #000;
+  color: #0ff;
+  text-align: center;
+  padding: 20px;
+}
+h1 {
+  animation: flicker 2s infinite;
+}
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+}
+.card {
+  background: #111;
+  border: 2px solid #0ff;
+  padding: 20px;
+  border-radius: 10px;
+  font-size: 1.2rem;
+  animation: pulse 3s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 10px #0ff; }
+  50% { box-shadow: 0 0 20px #0ff; }
+  100% { box-shadow: 0 0 10px #0ff; }
+}
+@keyframes flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    opacity: 1;
+  }
+  20%, 24%, 55% {
+    opacity: 0;
+  }
+}
+canvas {
+  max-width: 600px;
+  margin: 30px auto;
+}
