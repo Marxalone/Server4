@@ -4,18 +4,80 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>📊 MarxBot Analytics — Live Stats</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap">
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 </head>
 <body>
-  <h1>📊 MarxBot Analytics — Live Stats</h1>
-  <div class="stats">
-    <div class="card" id="total">Total Users: <span>0</span></div>
-    <div class="card" id="concurrent">Concurrent Users: <span>0</span></div>
-    <div class="card" id="disconnected">Disconnected Users: <span>0</span></div>
-    <div class="card" id="lastUpdate">Last Update: <span>-</span></div>
+  <div class="terminal">
+    <div class="terminal-header">
+      <div class="terminal-buttons">
+        <span class="terminal-button red"></span>
+        <span class="terminal-button yellow"></span>
+        <span class="terminal-button green"></span>
+      </div>
+      <div class="terminal-title">marxbot_analytics.exe</div>
+    </div>
+    <div class="terminal-body">
+      <h1 class="glitch" data-text="📊 MARXBOT ANALYTICS">📊 MARXBOT ANALYTICS</h1>
+      
+      <div class="dashboard-grid">
+        <!-- Main Stats -->
+        <div class="stat-card" id="total">
+          <div class="stat-label">TOTAL USERS</div>
+          <div class="stat-value"><span>0</span></div>
+          <div class="stat-trend"></div>
+        </div>
+        
+        <div class="stat-card" id="concurrent">
+          <div class="stat-label">ACTIVE NOW</div>
+          <div class="stat-value"><span>0</span></div>
+          <div class="stat-trend"></div>
+        </div>
+        
+        <div class="stat-card" id="disconnected">
+          <div class="stat-label">INACTIVE</div>
+          <div class="stat-value"><span>0</span></div>
+          <div class="stat-trend"></div>
+        </div>
+        
+        <div class="stat-card" id="peak">
+          <div class="stat-label">PEAK TODAY</div>
+          <div class="stat-value"><span>0</span></div>
+          <div class="stat-trend"></div>
+        </div>
+      <div class="chart-card">
+  <div class="chart-title">BOT INSTANCES</div>
+  <div id="botChart" class="chart-container"></div>
+</div>  
+        <!-- Charts -->
+        <div class="chart-card wide">
+          <div class="chart-title">USER ACTIVITY</div>
+          <div id="activityChart" class="chart-container"></div>
+        </div>
+        
+        <div class="chart-card">
+          <div class="chart-title">STATUS DISTRIBUTION</div>
+          <div id="statusChart" class="chart-container"></div>
+        </div>
+        
+        <div class="chart-card">
+          <div class="chart-title">MESSAGES</div>
+          <div id="messageChart" class="chart-container"></div>
+        </div>
+        
+        <!-- System Info -->
+        <div class="info-card">
+          <div class="info-title">SYSTEM STATUS</div>
+          <div class="info-line">Last Update: <span id="lastUpdate">-</span></div>
+          <div class="info-line">Uptime: <span id="uptime">-</span></div>
+          <div class="info-line">Active Users: <span id="activeUsers">0</span></div>
+        </div>
+      </div>
+    </div>
   </div>
-  <canvas id="chart"></canvas>
+  
   <script src="script.js"></script>
 </body>
 </html>
