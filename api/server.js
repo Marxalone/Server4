@@ -3,17 +3,17 @@ const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
 const app = express();
-const { PORT, TIMEOUTS, LOGGING } = require('./config');
+const { PORT, TIMEOUTS, LOGGING } = require('../config');
 
-const DB_PATH = path.join(__dirname, 'db/db.json');
-const LOG_PATH = path.join(__dirname, 'logs/errors.log');
+const DB_PATH = path.join(__dirname, '../db/db.json');
+const LOG_PATH = path.join(__dirname, '../logs/errors.log');
 
 app.use(express.json());
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST']
 }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Enhanced data structure
 const initialDB = {
@@ -235,8 +235,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
-  console.log(`📊 Dashboard available at http://localhost:${PORT}/index.html`);
+    console.log(`✅ Server running at http://localhost:${PORT}`);
 });
