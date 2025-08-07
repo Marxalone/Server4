@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
 </head>
 <body>
   <div class="terminal">
@@ -18,52 +19,63 @@
         <span class="terminal-button green"></span>
       </div>
       <div class="terminal-title">marxbot_analytics.exe</div>
+      <div class="terminal-status" id="connectionStatus">Connecting...</div>
     </div>
     <div class="terminal-body">
       <h1 class="glitch" data-text="📊 MARXBOT ANALYTICS">📊 MARXBOT ANALYTICS</h1>
       
       <div class="dashboard-grid">
-        <!-- Main Stats -->
-        <div class="stat-card" id="total">
+        <!-- Connection Stats -->
+        <div class="stat-card">
+          <div class="stat-label">TOTAL INSTANCES</div>
+          <div class="stat-value"><span id="totalInstances">0</span></div>
+          <div class="stat-trend" id="instanceTrend"></div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">ACTIVE INSTANCES</div>
+          <div class="stat-value"><span id="activeInstances">0</span></div>
+          <div class="stat-trend" id="activeTrend"></div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">TOTAL CONNECTIONS</div>
+          <div class="stat-value"><span id="totalConnections">0</span></div>
+          <div class="stat-trend" id="connectionTrend"></div>
+        </div>
+        
+        <!-- User Stats -->
+        <div class="stat-card">
           <div class="stat-label">TOTAL USERS</div>
-          <div class="stat-value"><span>0</span></div>
-          <div class="stat-trend"></div>
+          <div class="stat-value"><span id="totalUsers">0</span></div>
+          <div class="stat-trend" id="userTrend"></div>
         </div>
         
-        <div class="stat-card" id="concurrent">
-          <div class="stat-label">ACTIVE NOW</div>
-          <div class="stat-value"><span>0</span></div>
-          <div class="stat-trend"></div>
+        <div class="stat-card">
+          <div class="stat-label">ACTIVE USERS</div>
+          <div class="stat-value"><span id="activeUsers">0</span></div>
+          <div class="stat-trend" id="activeUserTrend"></div>
         </div>
         
-        <div class="stat-card" id="disconnected">
-          <div class="stat-label">INACTIVE</div>
-          <div class="stat-value"><span>0</span></div>
-          <div class="stat-trend"></div>
+        <div class="stat-card">
+          <div class="stat-label">TOTAL MESSAGES</div>
+          <div class="stat-value"><span id="totalMessages">0</span></div>
+          <div class="stat-trend" id="messageTrend"></div>
         </div>
         
-        <div class="stat-card" id="peak">
-          <div class="stat-label">PEAK TODAY</div>
-          <div class="stat-value"><span>0</span></div>
-          <div class="stat-trend"></div>
-        </div>
-      <div class="chart-card">
-  <div class="chart-title">BOT INSTANCES</div>
-  <div id="botChart" class="chart-container"></div>
-</div>  
         <!-- Charts -->
         <div class="chart-card wide">
-          <div class="chart-title">USER ACTIVITY</div>
+          <div class="chart-title">INSTANCE ACTIVITY</div>
           <div id="activityChart" class="chart-container"></div>
         </div>
         
         <div class="chart-card">
-          <div class="chart-title">STATUS DISTRIBUTION</div>
+          <div class="chart-title">INSTANCE STATUS</div>
           <div id="statusChart" class="chart-container"></div>
         </div>
         
         <div class="chart-card">
-          <div class="chart-title">MESSAGES</div>
+          <div class="chart-title">MESSAGE TRAFFIC</div>
           <div id="messageChart" class="chart-container"></div>
         </div>
         
@@ -72,7 +84,26 @@
           <div class="info-title">SYSTEM STATUS</div>
           <div class="info-line">Last Update: <span id="lastUpdate">-</span></div>
           <div class="info-line">Uptime: <span id="uptime">-</span></div>
-          <div class="info-line">Active Users: <span id="activeUsers">0</span></div>
+          <div class="info-line">API Status: <span id="apiStatus">Checking...</span></div>
+          <div class="info-line">Data Version: <span id="dataVersion">-</span></div>
+        </div>
+        
+        <!-- Instance List -->
+        <div class="table-card wide">
+          <div class="chart-title">ACTIVE INSTANCES</div>
+          <div class="table-container">
+            <table id="instancesTable">
+              <thead>
+                <tr>
+                  <th>Instance ID</th>
+                  <th>User Agent</th>
+                  <th>Last Active</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
