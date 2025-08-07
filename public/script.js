@@ -1,5 +1,5 @@
 // Initialize charts
-let activityChart, statusChart, messageChart, botChart;
+let activityChart, statusChart, messageChart, botChart, instancesChart;
 let lastData = null;
 let startTime = Date.now();
 
@@ -11,7 +11,14 @@ const elements = {
     peak: document.querySelector('#peak .stat-value span'),
     activeUsers: document.getElementById('activeUsers'),
     lastUpdate: document.getElementById('lastUpdate'),
-    uptime: document.getElementById('uptime')
+    uptime: document.getElementById('uptime'),
+    totalInstances: document.getElementById('totalInstances'),
+    activeInstances: document.getElementById('activeInstances'),
+    inactiveInstances: document.getElementById('inactiveInstances'),
+    totalConnections: document.getElementById('totalConnections'),
+    currentConnections: document.getElementById('currentConnections'),
+    peakConnections: document.getElementById('peakConnections'),
+    disconnections: document.getElementById('disconnections')
 };
 
 // Format numbers with commas
@@ -54,6 +61,9 @@ function initCharts() {
     // Bot Chart (Pie)
     botChart = echarts.init(document.getElementById('botChart'));
     
+    // Instances Chart (Pie)
+    instancesChart = echarts.init(document.getElementById('instancesChart'));
+    
     // Set initial options
     updateCharts({
         totalUsers: 0,
@@ -64,6 +74,64 @@ function initCharts() {
         dailyActive: {},
         botTypes: {}
     });
+}
+
+// Update instances chart
+function updateInstancesChart(instances) {
+    const now = Date.now();
+    const active = Object.values(instances).filter(i => 
+        i.status === 'connected' && (now - i.lastActive) < TIMEOUTS.concurrent
+    ).length;
+    
+    const inactive = Object.values(instances).filter(i => 
+        i.status !== 'connected' || (now - i.lastActive) >= TIMEOUTS.concurrent
+    ).length;
+    
+    const option = {
+        backgroundColor: 'transparent',
+        tooltip: {
+            trigger: 'item'
+        },
+        legend: {
+            top: '5%',
+            left: 'center',
+            textStyle: { color: '#fff' }
+        },
+        series: [
+            {
+                name: 'Bot Instances',
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: false,
+                itemStyle: {
+                    borderRadius: 10,
+                    borderColor: '#000',
+                    borderWidth: 2
+                },
+                label: {
+                    show: false,
+                    position: 'center'
+                },
+                emphasis: {
+                    label: {
+                        show: true,
+                        fontSize: '18',
+                        fontWeight: 'bold',
+                        color: '#0ff'
+                    }
+                },
+                labelLine: {
+                    show: false
+                },
+                data: [
+                    { value: active, name: 'Active', itemStyle: { color: '#0f0' }},
+                    { value: inactive, name: 'Inactive', itemStyle: { color: '#f00' }}
+                ]
+            }
+        ]
+    };
+    
+    instancesChart.setOption(option);
 }
 
 // Update charts with new data
@@ -250,15 +318,17 @@ function updateCharts(data) {
 // Fetch stats from server
 async function fetchStats() {
     try {
-        const [statsRes, historyRes, botRes] = await Promise.all([
+        const [statsRes, historyRes, botRes, instancesRes] = await Promise.all([
             fetch('/api/stats'),
             fetch('/api/history'),
-            fetch('/api/bot-stats')
+            fetch('/api/bot-stats'),
+            fetch('/api/instances')
         ]);
         
         const statsData = await statsRes.json();
         const historyData = await historyRes.json();
         const botData = await botRes.json();
+        const instancesData = await instancesRes.json();
         
         // Update DOM elements
         elements.total.textContent = formatNumber(statsData.totalUsers);
@@ -267,6 +337,21 @@ async function fetchStats() {
         elements.peak.textContent = formatNumber(statsData.peakConcurrency);
         elements.activeUsers.textContent = statsData.activeUsers.length;
         elements.lastUpdate.textContent = new Date(statsData.lastUpdate).toLocaleTimeString();
+        
+        // Update instances stats if they exist in the response
+        if (statsData.totalInstances !== undefined) {
+            elements.totalInstances.textContent = statsData.totalInstances;
+            elements.activeInstances.textContent = statsData.activeInstances;
+            elements.inactiveInstances.textContent = statsData.inactiveInstances;
+        }
+        
+        // Update connection stats if they exist in the response
+        if (statsData.statistics) {
+            elements.totalConnections.textContent = statsData.statistics.totalConnections;
+            elements.currentConnections.textContent = statsData.statistics.currentConnections;
+            elements.peakConnections.textContent = statsData.statistics.peakConnections;
+            elements.disconnections.textContent = statsData.statistics.disconnections;
+        }
         
         // Combine data for charts
         const chartData = {
@@ -277,6 +362,9 @@ async function fetchStats() {
         
         // Update charts
         updateCharts(chartData);
+        
+        // Update instances chart
+        updateInstancesChart(instancesData);
         
         // Add pulse animation to updated cards
         document.querySelectorAll('.stat-card').forEach(card => {
@@ -312,4 +400,5 @@ window.addEventListener('resize', () => {
     statusChart.resize();
     messageChart.resize();
     botChart.resize();
+    instancesChart.resize();
 });
