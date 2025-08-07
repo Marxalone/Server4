@@ -73,6 +73,12 @@ const saveDB = async (data) => {
   }
 };
 
+// Middleware to log requests
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
+
 // Helper to detect connection quality issues
 function detectConnectionQuality(instance, now) {
   const issues = [];
@@ -100,9 +106,9 @@ function calculateHealthScore(instance) {
   let score = 100;
   
   // Deduct for quality issues
-  if (instance.qualityIssues.includes('frequent_reconnections')) score -= 30;
-  if (instance.qualityIssues.includes('short_sessions')) score -= 20;
-  if (instance.qualityIssues.includes('ip_instability')) score -= 15;
+  if (instance.qualityIssues?.includes('frequent_reconnections')) score -= 30;
+  if (instance.qualityIssues?.includes('short_sessions')) score -= 20;
+  if (instance.qualityIssues?.includes('ip_instability')) score -= 15;
   
   // Deduct for high disconnection rate
   const disconnectionRate = instance.disconnectionCount / instance.connectionCount;
@@ -116,33 +122,11 @@ function calculateHealthScore(instance) {
   return Math.max(0, Math.round(score));
 }
 
-function generateRecommendations(instance) {
-  const recs = [];
-  
-  if (instance.qualityIssues.includes('frequent_reconnections')) {
-    recs.push('Check network stability and bot reconnection logic');
-  }
-  
-  if (instance.qualityIssues.includes('short_sessions')) {
-    recs.push('Investigate why sessions are ending prematurely');
-  }
-  
-  if (instance.qualityIssues.includes('ip_instability')) {
-    recs.push('Bot may be changing networks frequently - consider static IP');
-  }
-  
-  if (instance.healthScore < 70) {
-    recs.push('This instance needs attention - review connection logs');
-  }
-  
-  return recs.length > 0 ? recs : ['No critical issues detected'];
-}
-
 function updateQualityMetrics(db) {
   // Calculate average session duration across all instances
   const instances = Object.values(db.instances);
   const durations = instances.flatMap(i => 
-    i.sessions.filter(s => s.duration).map(s => s.duration)
+    i.sessions?.filter(s => s.duration).map(s => s.duration) || []
   );
   
   if (durations.length > 0) {
@@ -157,7 +141,7 @@ function updateQualityMetrics(db) {
   }
   
   // Calculate overall quality metrics
-  const healthScores = instances.map(i => i.healthScore);
+  const healthScores = instances.map(i => i.healthScore || 100);
   const avgHealthScore = healthScores.length > 0 
     ? healthScores.reduce((a, b) => a + b, 0) / healthScores.length
     : 100;
@@ -167,6 +151,20 @@ function updateQualityMetrics(db) {
     healthScore: Math.round(avgHealthScore),
     connectionQuality: calculateConnectionQuality(db)
   };
+}
+
+function calculateStabilityScore(db) {
+  const totalSessions = db.statistics.connectionEvents.filter(
+    e => e.type === 'connection'
+  ).length;
+  
+  const stableSessions = db.statistics.connectionEvents.filter(
+    e => e.type === 'disconnection' && e.reason === 'normal'
+  ).length;
+  
+  return totalSessions > 0
+    ? Math.max(0, (stableSessions / totalSessions * 100))
+    : 100;
 }
 
 function calculateConnectionQuality(db) {
@@ -183,24 +181,29 @@ function calculateConnectionQuality(db) {
     : 100;
 }
 
-function calculateStabilityScore(db) {
-  const totalConnections = db.statistics.totalConnections;
-  const failedConnections = db.statistics.connectionEvents.filter(
-    e => e.type === 'disconnection' && e.reason !== 'normal'
-  ).length;
+function generateRecommendations(instance) {
+  const recs = [];
   
-  return totalConnections > 0
-    ? Math.max(0, 100 - (failedConnections / totalConnections * 100))
-    : 100;
+  if (instance.qualityIssues?.includes('frequent_reconnections')) {
+    recs.push('Check network stability and bot reconnection logic');
+  }
+  
+  if (instance.qualityIssues?.includes('short_sessions')) {
+    recs.push('Investigate why sessions are ending prematurely');
+  }
+  
+  if (instance.qualityIssues?.includes('ip_instability')) {
+    recs.push('Bot may be changing networks frequently - consider static IP');
+  }
+  
+  if (instance.healthScore < 70) {
+    recs.push('This instance needs attention - review connection logs');
+  }
+  
+  return recs.length > 0 ? recs : ['No critical issues detected'];
 }
 
-// Middleware to log requests
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
-  next();
-});
-
-// Enhanced connection handler
+// Connection tracking
 app.post('/api/connect', async (req, res) => {
   const { instanceId, userId, userAgent = 'Unknown', location } = req.body;
   const ip = req.ip;
@@ -296,6 +299,8 @@ app.post('/api/connect', async (req, res) => {
   // Statistics
   db.statistics.userAgents[userAgent] = (db.statistics.userAgents[userAgent] || 0) + 1;
   db.statistics.dailyActive[today] = (db.statistics.dailyActive[today] || 0) + 1;
+  
+  // Record connection event
   db.statistics.connectionEvents.push({
     type: 'connection',
     instanceId,
@@ -317,9 +322,9 @@ app.post('/api/connect', async (req, res) => {
   });
 });
 
-// Enhanced disconnection handler
+// Disconnection tracking
 app.post('/api/disconnect', async (req, res) => {
-  const { instanceId, reason = 'unknown' } = req.body;
+  const { instanceId, reason = 'normal' } = req.body;
   const now = Date.now();
 
   if (!instanceId) {
@@ -448,7 +453,7 @@ app.get('/api/users', async (req, res) => {
   });
 });
 
-// New health check endpoint
+// New health check endpoint for instances
 app.get('/api/instance-health/:instanceId', async (req, res) => {
   const db = await loadDB();
   const instance = db.instances[req.params.instanceId];
@@ -468,15 +473,6 @@ app.get('/api/instance-health/:instanceId', async (req, res) => {
   });
 });
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'healthy',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString()
-  });
-});
-
 // Helper function to update connection stats
 function updateConnectionStats(db, now) {
   db.statistics.currentConnections = Object.values(db.instances)
@@ -487,6 +483,15 @@ function updateConnectionStats(db, now) {
     db.statistics.peakConnections = db.statistics.currentConnections;
   }
 }
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
 
 app.listen(PORT, () => {
     console.log(`✅ Server running at http://localhost:${PORT}`);
