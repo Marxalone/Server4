@@ -1,4 +1,3 @@
-// Updated server.js with improved user tracking
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -15,11 +14,13 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Enhanced data structure
 const initialDB = {
-    users: {},       // { userId: { lastActive, firstSeen, activeCount } }
+    instances: {},    // Track bot instances { instanceId: { lastActive, firstSeen, status } }
+    users: {},        // Track user activity per instance
     statistics: {
-        totalMessages: 0,
-        peakConcurrency: 0,
-        dailyActive: {}
+        totalConnections: 0,
+        currentConnections: 0,
+        peakConnections: 0,
+        disconnections: 0
     }
 };
 
@@ -49,174 +50,145 @@ const saveDB = async (data) => {
         await logError(`DB write error: ${e.message}`, 'SYSTEM');
     }
 };
-// Add this near the top with other constants
-const USER_AGENTS = {
-    'Baileys': /Baileys/i,
-    'WhatsApp-Bot': /WhatsApp-Bot/i,
-    'Custom-Bot': /Custom-Bot/i
-    // Add more patterns as needed
-};
 
-// Modify the track endpoint to capture user agent
-app.post('/api/track', async (req, res) => {
+// Connection tracking endpoint
+app.post('/api/connect', async (req, res) => {
+    const { instanceId, userId, userAgent } = req.body;
     const ip = req.ip;
-    const { userId, timestamp = Date.now(), eventType = 'activity' } = req.body;
-    const userAgent = req.get('User-Agent') || 'Unknown';
+    const now = Date.now();
 
-    if (!userId) {
-        await logError('Invalid payload - missing userId', ip);
-        return res.status(400).json({ error: 'userId required' });
+    if (!instanceId) {
+        await logError('Invalid payload - missing instanceId', ip);
+        return res.status(400).json({ error: 'instanceId required' });
     }
 
     const db = await loadDB();
-    const now = timestamp;
-    const today = new Date(now).toISOString().split('T')[0];
-
-    // Detect bot type from user agent
-    let botType = 'Unknown';
-    for (const [type, regex] of Object.entries(USER_AGENTS)) {
-        if (regex.test(userAgent)) {
-            botType = type;
-            break;
-        }
-    }
-
-    // Initialize user if not exists
-    if (!db.users[userId]) {
-        db.users[userId] = {
+    
+    // Initialize or update instance
+    if (!db.instances[instanceId]) {
+        db.instances[instanceId] = {
             firstSeen: now,
             lastActive: now,
-            activeCount: 1,
-            sessions: [],
-            botType: botType,
-            userAgent: userAgent
+            status: 'connected',
+            userAgent: userAgent,
+            ipAddress: ip
         };
+        db.statistics.totalConnections += 1;
     } else {
-        // Update existing user
-        const user = db.users[userId];
-        user.lastActive = now;
-        user.activeCount = (user.activeCount || 0) + 1;
+        db.instances[instanceId].lastActive = now;
+        db.instances[instanceId].status = 'connected';
+    }
+    
+    // Update current connections count
+    db.statistics.currentConnections = Object.values(db.instances)
+        .filter(i => i.status === 'connected' && (now - i.lastActive) < TIMEOUTS.concurrent)
+        .length;
         
-        // Update bot type if not set or changed
-        if (!user.botType || user.botType === 'Unknown') {
-            user.botType = botType;
-        }
+    // Update peak connections
+    if (db.statistics.currentConnections > db.statistics.peakConnections) {
+        db.statistics.peakConnections = db.statistics.currentConnections;
     }
-
-    // Track user agents
-    db.statistics.userAgents = db.statistics.userAgents || {};
-    db.statistics.userAgents[botType] = (db.statistics.userAgents[botType] || 0) + 1;
-
-    // Update statistics
-    db.statistics.totalMessages += 1;
-    db.statistics.dailyActive[today] = (db.statistics.dailyActive[today] || 0) + 1;
 
     await saveDB(db);
     res.status(200).json({ success: true });
 });
 
-// Add new endpoint for bot instance stats
-app.get('/api/bot-stats', async (req, res) => {
-    const db = await loadDB();
-    
-    // Count users by bot type
-    const botTypeCounts = {};
-    Object.values(db.users).forEach(user => {
-        const type = user.botType || 'Unknown';
-        botTypeCounts[type] = (botTypeCounts[type] || 0) + 1;
-    });
-
-    res.json({
-        botTypes: botTypeCounts,
-        userAgents: db.statistics.userAgents || {}
-    });
-});
-
-// Enhanced tracking endpoint
-app.post('/api/track', async (req, res) => {
+// Disconnection tracking endpoint
+app.post('/api/disconnect', async (req, res) => {
+    const { instanceId } = req.body;
     const ip = req.ip;
-    const { userId, timestamp = Date.now(), eventType = 'activity' } = req.body;
+    const now = Date.now();
 
-    if (!userId) {
-        await logError('Invalid payload - missing userId', ip);
-        return res.status(400).json({ error: 'userId required' });
+    if (!instanceId) {
+        await logError('Invalid payload - missing instanceId', ip);
+        return res.status(400).json({ error: 'instanceId required' });
     }
 
     const db = await loadDB();
-    const now = timestamp;
-    const today = new Date(now).toISOString().split('T')[0];
+    
+    if (db.instances[instanceId]) {
+        db.instances[instanceId].status = 'disconnected';
+        db.instances[instanceId].lastActive = now;
+        db.statistics.disconnections += 1;
+        
+        // Update current connections count
+        db.statistics.currentConnections = Object.values(db.instances)
+            .filter(i => i.status === 'connected' && (now - i.lastActive) < TIMEOUTS.concurrent)
+            .length;
+            
+        await saveDB(db);
+    }
 
+    res.status(200).json({ success: true });
+});
+
+// User activity tracking
+app.post('/api/track', async (req, res) => {
+    const { instanceId, userId } = req.body;
+    const ip = req.ip;
+    const now = Date.now();
+
+    if (!instanceId || !userId) {
+        await logError('Invalid payload - missing instanceId or userId', ip);
+        return res.status(400).json({ error: 'instanceId and userId required' });
+    }
+
+    const db = await loadDB();
+    
     // Initialize user if not exists
     if (!db.users[userId]) {
         db.users[userId] = {
             firstSeen: now,
             lastActive: now,
-            activeCount: 1,
-            sessions: []
+            instances: [instanceId]
         };
     } else {
         // Update existing user
-        const user = db.users[userId];
-        user.lastActive = now;
-        user.activeCount = (user.activeCount || 0) + 1;
+        db.users[userId].lastActive = now;
+        if (!db.users[userId].instances.includes(instanceId)) {
+            db.users[userId].instances.push(instanceId);
+        }
     }
-
-    // Update statistics
-    db.statistics.totalMessages += 1;
     
-    // Update daily active
-    db.statistics.dailyActive[today] = (db.statistics.dailyActive[today] || 0) + 1;
+    // Update instance activity
+    if (db.instances[instanceId]) {
+        db.instances[instanceId].lastActive = now;
+    }
 
     await saveDB(db);
     res.status(200).json({ success: true });
 });
 
-// Enhanced stats endpoint
+// Get stats
 app.get('/api/stats', async (req, res) => {
     const db = await loadDB();
     const now = Date.now();
     
-    let total = 0, concurrent = 0, disconnected = 0;
-    const activeUsers = new Set();
-    const dailyActive = Object.values(db.statistics.dailyActive).reduce((a, b) => a + b, 0);
-
-    for (const [userId, userData] of Object.entries(db.users)) {
-        total++;
-        if (now - userData.lastActive <= TIMEOUTS.concurrent) {
-            concurrent++;
-            activeUsers.add(userId);
-        }
-        if (now - userData.lastActive >= TIMEOUTS.disconnected) {
-            disconnected++;
-        }
-    }
-
-    // Update peak concurrency
-    if (concurrent > db.statistics.peakConcurrency) {
-        db.statistics.peakConcurrency = concurrent;
-        await saveDB(db);
-    }
+    // Calculate active instances (connected and recently active)
+    const activeInstances = Object.values(db.instances)
+        .filter(i => i.status === 'connected' && (now - i.lastActive) < TIMEOUTS.concurrent);
+        
+    // Calculate inactive instances (disconnected or timed out)
+    const inactiveInstances = Object.values(db.instances)
+        .filter(i => i.status !== 'connected' || (now - i.lastActive) >= TIMEOUTS.concurrent);
 
     res.json({
-        totalUsers: total,
-        concurrentUsers: concurrent,
-        disconnectedUsers: disconnected,
-        activeUsers: Array.from(activeUsers),
-        dailyActiveUsers: dailyActive,
-        peakConcurrency: db.statistics.peakConcurrency,
-        totalMessages: db.statistics.totalMessages,
+        totalInstances: Object.keys(db.instances).length,
+        activeInstances: activeInstances.length,
+        inactiveInstances: inactiveInstances.length,
+        totalUsers: Object.keys(db.users).length,
+        activeUsers: Object.values(db.users)
+            .filter(u => (now - u.lastActive) < TIMEOUTS.concurrent)
+            .length,
+        statistics: db.statistics,
         lastUpdate: new Date().toISOString()
     });
 });
 
-// New endpoint for historical data
-app.get('/api/history', async (req, res) => {
+// Get instance details
+app.get('/api/instances', async (req, res) => {
     const db = await loadDB();
-    res.json({
-        dailyActive: db.statistics.dailyActive,
-        userGrowth: Object.keys(db.users).length,
-        messageHistory: db.statistics.totalMessages
-    });
+    res.json(db.instances);
 });
 
 app.listen(PORT, () => {
