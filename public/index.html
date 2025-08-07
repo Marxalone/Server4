@@ -9,6 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"></script>
 </head>
 <body>
   <div class="terminal">
@@ -23,6 +24,12 @@
     </div>
     <div class="terminal-body">
       <h1 class="glitch" data-text="📊 MARXBOT ANALYTICS">📊 MARXBOT ANALYTICS</h1>
+      
+      <!-- Alert Banner -->
+      <div class="alert-banner" id="alertBanner">
+        <span class="alert-icon">⚠️</span>
+        <span class="alert-message" id="alertMessage"></span>
+      </div>
       
       <div class="dashboard-grid">
         <!-- Connection Stats -->
@@ -39,44 +46,48 @@
         </div>
         
         <div class="stat-card">
-          <div class="stat-label">TOTAL CONNECTIONS</div>
-          <div class="stat-value"><span id="totalConnections">0</span></div>
-          <div class="stat-trend" id="connectionTrend"></div>
+          <div class="stat-label">RECONNECTIONS</div>
+          <div class="stat-value"><span id="totalReconnections">0</span></div>
+          <div class="stat-trend" id="reconnectionTrend"></div>
         </div>
         
-        <!-- User Stats -->
-        <div class="stat-card">
-          <div class="stat-label">TOTAL USERS</div>
-          <div class="stat-value"><span id="totalUsers">0</span></div>
-          <div class="stat-trend" id="userTrend"></div>
-        </div>
-        
-        <div class="stat-card">
-          <div class="stat-label">ACTIVE USERS</div>
-          <div class="stat-value"><span id="activeUsers">0</span></div>
-          <div class="stat-trend" id="activeUserTrend"></div>
+        <!-- Health Stats -->
+        <div class="stat-card health-card">
+          <div class="stat-label">SYSTEM HEALTH</div>
+          <div class="health-score" id="healthScore">100</div>
+          <div class="health-bar">
+            <div class="health-progress" id="healthBar"></div>
+          </div>
+          <div class="health-status" id="healthStatus">Excellent</div>
         </div>
         
         <div class="stat-card">
-          <div class="stat-label">TOTAL MESSAGES</div>
-          <div class="stat-value"><span id="totalMessages">0</span></div>
-          <div class="stat-trend" id="messageTrend"></div>
+          <div class="stat-label">AVG SESSION</div>
+          <div class="stat-value"><span id="avgSessionDuration">0s</span></div>
+          <div class="stat-trend" id="sessionTrend"></div>
         </div>
         
-        <!-- Charts -->
+        <div class="stat-card">
+          <div class="stat-label">FAILED CONNECTS</div>
+          <div class="stat-value"><span id="failedConnections">0</span></div>
+          <div class="stat-trend" id="failedTrend"></div>
+        </div>
+        
+        <!-- Main Charts -->
         <div class="chart-card wide">
-          <div class="chart-title">INSTANCE ACTIVITY</div>
+          <div class="chart-title">INSTANCE ACTIVITY TIMELINE</div>
           <div id="activityChart" class="chart-container"></div>
         </div>
         
         <div class="chart-card">
-          <div class="chart-title">INSTANCE STATUS</div>
-          <div id="statusChart" class="chart-container"></div>
+          <div class="chart-title">SESSION DURATION</div>
+          <div id="durationChart" class="chart-container"></div>
         </div>
         
-        <div class="chart-card">
-          <div class="chart-title">MESSAGE TRAFFIC</div>
-          <div id="messageChart" class="chart-container"></div>
+        <!-- Quality Charts -->
+        <div class="chart-card wide">
+          <div class="chart-title">CONNECTION QUALITY</div>
+          <div id="qualityChart" class="chart-container"></div>
         </div>
         
         <!-- System Info -->
@@ -85,25 +96,62 @@
           <div class="info-line">Last Update: <span id="lastUpdate">-</span></div>
           <div class="info-line">Uptime: <span id="uptime">-</span></div>
           <div class="info-line">API Status: <span id="apiStatus">Checking...</span></div>
-          <div class="info-line">Data Version: <span id="dataVersion">-</span></div>
+          <div class="info-line">Stability: <span id="stabilityScore">100%</span></div>
+        </div>
+        
+        <!-- Issues Card -->
+        <div class="info-card issues-card">
+          <div class="info-title">RECENT ISSUES</div>
+          <div class="issues-list" id="issuesList">
+            <div class="no-issues">No critical issues detected</div>
+          </div>
         </div>
         
         <!-- Instance List -->
         <div class="table-card wide">
-          <div class="chart-title">ACTIVE INSTANCES</div>
+          <div class="chart-title">INSTANCE DETAILS</div>
           <div class="table-container">
             <table id="instancesTable">
               <thead>
                 <tr>
-                  <th>Instance ID</th>
-                  <th>User Agent</th>
-                  <th>Last Active</th>
+                  <th>Instance</th>
+                  <th>Health</th>
+                  <th>Session</th>
                   <th>Status</th>
+                  <th>Issues</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody></tbody>
             </table>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Instance Detail Modal -->
+  <div class="modal" id="instanceModal">
+    <div class="modal-content">
+      <span class="close-btn">&times;</span>
+      <h2 id="modalInstanceId"></h2>
+      <div class="modal-grid">
+        <div class="modal-card">
+          <h3>Health Overview</h3>
+          <div class="health-gauge" id="instanceHealthGauge"></div>
+          <div class="health-metrics">
+            <div><span>Connections:</span> <span id="modalConnectionCount"></span></div>
+            <div><span>Avg Session:</span> <span id="modalAvgSession"></span></div>
+            <div><span>Last IP:</span> <span id="modalLastIp"></span></div>
+          </div>
+        </div>
+        <div class="modal-card">
+          <h3>Session History</h3>
+          <div id="sessionHistoryChart" class="chart-container"></div>
+        </div>
+        <div class="modal-card wide">
+          <h3>Recommendations</h3>
+          <ul id="instanceRecommendations"></ul>
         </div>
       </div>
     </div>
