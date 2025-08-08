@@ -113,7 +113,7 @@ const ensurePersistentData = async () => {
 };
 
 // Run maintenance every hour
-setInterval(ensurePersistentData, 3600000);
+setInterval(ensurePersistentData, 86400000);
 
 // Helper functions
 function updateConnectionStats(db, now) {
