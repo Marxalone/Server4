@@ -51,15 +51,6 @@ app.use(compression());
 // Rate limiting
 
 // Trust Render's proxy
-app.set('trust proxy', 1); // Or true if you need to trust multiple hops
-
-// Then modify your rate limiter configuration:
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: 'Too many requests',
-  validate: { trustProxy: true } // Add this option
-});
 
 // Enhanced logging
 const logError = async (message, ip, stack = '') => {
