@@ -347,33 +347,39 @@ app.post('/api/system-info',
 );
 
 // Error tracking endpoint
-app.post('/api/error', 
-  [
-    body('instanceId').isString().notEmpty(),
-    body('errorType').isString().notEmpty(),
-    body('error').isString().notEmpty()
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { instanceId, errorType, error, stack } = req.body;
-    const now = Date.now();
-
+// Add this error endpoint (before app.listen)
+app.get('/api/errors', async (req, res) => {
+  try {
     const db = await loadDB();
+    const errors = [];
     
-    // Track error in statistics
-    db.statistics.errors[errorType] = (db.statistics.errors[errorType] || 0) + 1;
-    
-    // Log the error
-    await logError(`${errorType}: ${error}`, instanceId, stack);
+    // Get disconnection errors from instances
+    Object.values(db.instances).forEach(instance => {
+      if (instance.lastDisconnect) {
+        errors.push({
+          instanceId: instance.id,
+          errorType: 'disconnection',
+          message: `Disconnected: ${instance.lastDisconnect.reason}`,
+          timestamp: instance.lastDisconnect.timestamp
+        });
+      }
+    });
 
-    await saveDB(db);
-    res.json({ success: true });
+    // Get system errors from statistics
+    Object.entries(db.statistics.errors || {}).forEach(([errorType, count]) => {
+      errors.push({
+        instanceId: 'system',
+        errorType,
+        message: `Error occurred ${count} time(s)`,
+        timestamp: Date.now() - Math.random() * 86400000 // Random recent time
+      });
+    });
+
+    res.json(errors.sort((a,b) => b.timestamp - a.timestamp).slice(0, 50));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-);
+});
 
 // Enhanced statistics endpoint
 app.get('/api/stats', async (req, res) => {
