@@ -208,7 +208,7 @@ app.post('/api/connect',
 );
 
 // Enhanced disconnection tracking
-app.post('/api/disconnect-instances', 
+app.post('/api/disconnect', 
   [
     body('instanceId').isString().notEmpty(),
     body('reason').optional().isString()
