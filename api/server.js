@@ -49,12 +49,18 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.use(compression());
 
 // Rate limiting
+
+// Trust Render's proxy
+app.set('trust proxy', 1); // Or true if you need to trust multiple hops
+
+// Then modify your rate limiter configuration:
+const rateLimit = require('express-rate-limit');
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
-  message: 'Too many requests from this IP, please try again later'
+  message: 'Too many requests',
+  validate: { trustProxy: true } // Add this option
 });
-app.use('/api/', apiLimiter);
 
 // Enhanced logging
 const logError = async (message, ip, stack = '') => {
