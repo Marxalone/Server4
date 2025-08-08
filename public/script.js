@@ -107,82 +107,85 @@ function initCharts() {
 
 // Fetch data from API
 // Update the fetchData function to handle errors better
+// Replace the fetchData function with this version
 async function fetchData() {
   try {
-    const startTime = performance.now();
-    elements.apiStatus.textContent = 'Fetching...';
-    elements.connectionStatus.textContent = 'Updating data...';
+    // Show loading state
+    elements.connectionStatus.textContent = 'Loading...';
+    elements.connectionStatus.style.color = '#ff0';
     
     const [stats, instances, health] = await Promise.all([
-      fetchJson('/api/stats'),
-      fetchJson('/api/instances'),
-      fetchJson('/api/connection-health')
+      fetchJson('/api/stats').catch(e => ({ error: 'Stats load failed' })),
+      fetchJson('/api/instances').catch(e => ({ error: 'Instances load failed' })),
+      fetchJson('/api/connection-health').catch(e => ({ error: 'Health check failed' }))
     ]);
-    
-    // Get errors only if the endpoint exists
+
+    // Load errors separately to prevent complete failure
     let errors = [];
     try {
       errors = await fetchJson('/api/errors');
     } catch (e) {
-      console.warn('Could not fetch errors:', e);
+      console.warn('Error loading failed:', e);
     }
-    
-    const fetchDuration = (performance.now() - startTime).toFixed(2);
-    elements.apiStatus.textContent = `OK (${fetchDuration}ms)`;
-    
-    // Update connection status based on health
-    if (health.healthStatus === 'healthy') {
-      elements.connectionStatus.textContent = 'Connected';
-      elements.connectionStatus.style.color = '#0f0';
+
+    // Update connection status
+    if (health && health.healthStatus) {
+      elements.connectionStatus.textContent = health.healthStatus === 'healthy' 
+        ? 'CONNECTED' 
+        : 'DEGRADED';
+      elements.connectionStatus.style.color = health.healthStatus === 'healthy' 
+        ? '#0f0' 
+        : '#ff0';
     } else {
-      elements.connectionStatus.textContent = 'Disconnected';
+      elements.connectionStatus.textContent = 'DISCONNECTED';
       elements.connectionStatus.style.color = '#f00';
     }
-    
-    // Update last update time
-    appState.lastUpdate = new Date(stats.lastUpdate);
-    elements.lastUpdate.textContent = appState.lastUpdate.toLocaleTimeString();
-    
-    // Update stats
-    updateStats(stats, health);
-    
-    // Update charts
-    updateCharts(stats, health);
-    
-    // Update tables
-    updateInstanceTable(instances);
-    updateErrorTable(errors);
-    
-    // Store historical data for trends
-    updateChartDataHistory(stats, health);
-    
+
+    // Process stats if available
+    if (stats && !stats.error) {
+      updateStats(stats, health);
+      updateCharts(stats, health);
+      updateInstanceTable(instances);
+      updateErrorTable(errors);
+    }
+
   } catch (error) {
-    console.error('Failed to fetch data:', error);
-    elements.apiStatus.textContent = 'Error';
-    elements.apiStatus.style.color = '#f00';
-    elements.connectionStatus.textContent = 'Connection failed';
+    console.error('Fatal fetch error:', error);
+    elements.connectionStatus.textContent = 'CONNECTION FAILED';
     elements.connectionStatus.style.color = '#f00';
   }
 }
+
+// Add this new function to handle null/undefined values
+function safeNumber(value, fallback = 0) {
+  return isNaN(value) ? fallback : Number(value);
+}
+
 
 
 
 // Update stats display
 function updateStats(stats, health) {
+const formattedUptime = health?.avgUptime 
+    ? formatUptime(health.avgUptime) 
+    : 'N/A';
+
+  // Calculate error rate safely
+  const errorRate = health?.errorRate 
+    ? safeNumber(health.errorRate).toFixed(1)
+    : '0.0';
   // Basic stats
-  elements.totalInstances.textContent = stats.totalInstances;
-  elements.activeInstances.textContent = stats.activeInstances;
-  elements.totalConnections.textContent = stats.statistics.totalConnections;
-  elements.totalUsers.textContent = stats.totalUsers;
-  elements.activeUsers.textContent = stats.activeUsers;
-  elements.totalMessages.textContent = stats.statistics.totalMessages;
-  elements.dataVersion.textContent = stats.settings.version || '2.0.0';
-  
-  // New stats
-  elements.errorRate.textContent = health.errorRate || 0;
-  elements.errorRateValue.textContent = health.errorRate || 0;
-  elements.avgUptime.textContent = formatUptime(health.avgUptime);
-  elements.activePercent.textContent = calculateActivePercent(stats);
+  elements.totalInstances.textContent = safeNumber(stats?.totalInstances);
+  elements.activeInstances.textContent = safeNumber(stats?.activeInstances);
+  elements.totalConnections.textContent = safeNumber(stats?.statistics?.totalConnections);
+  elements.totalUsers.textContent = safeNumber(stats?.totalUsers);
+  elements.activeUsers.textContent = safeNumber(stats?.activeUsers);
+  elements.totalMessages.textContent = safeNumber(stats?.statistics?.totalMessages);
+  elements.errorRate.textContent = errorRate;
+  elements.errorRateValue.textContent = errorRate;
+  elements.avgUptime.textContent = formattedUptime;
+  elements.dataVersion.textContent = stats?.settings?.version || '2.0.0';
+  elements.lastUpdate.textContent = new Date().toLocaleTimeString();
   
   // Calculate trends if we have previous data
   if (appState.previousStats) {

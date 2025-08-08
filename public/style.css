@@ -351,6 +351,30 @@ tr:hover {
   font-weight: bold;
   padding: 2px 8px;
   color: #0f0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.3);
+}
+/* Add these styles to style.css */
+
+/* Connection status animations */
+@keyframes pulse-connected {
+  0% { box-shadow: 0 0 5px rgba(0, 255, 0, 0.5); }
+  50% { box-shadow: 0 0 15px rgba(0, 255, 0, 0.8); }
+  100% { box-shadow: 0 0 5px rgba(0, 255, 0, 0.5); }
+}
+
+@keyframes pulse-warning {
+  0% { box-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
+  50% { box-shadow: 0 0 15px rgba(255, 255, 0, 0.8); }
+  100% { box-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
+}
+
+.terminal-status[data-status="connected"] {
+  animation: pulse-connected 2s infinite;
+}
+
+.terminal-status[data-status="degraded"] {
+  animation: pulse-warning 1.5s infinite;
 }
