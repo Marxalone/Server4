@@ -6,7 +6,6 @@
   <title>📊 MarxBot Analytics — Live Stats</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap">
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
 </head>
@@ -63,6 +62,19 @@
           <div class="stat-trend" id="messageTrend"></div>
         </div>
         
+        <!-- New Stats -->
+        <div class="stat-card">
+          <div class="stat-label">ERROR RATE</div>
+          <div class="stat-value"><span id="errorRate">0</span>%</div>
+          <div class="stat-trend" id="errorTrend"></div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">AVG UPTIME</div>
+          <div class="stat-value"><span id="avgUptime">0</span></div>
+          <div class="stat-trend" id="uptimeTrend"></div>
+        </div>
+        
         <!-- Charts -->
         <div class="chart-card wide">
           <div class="chart-title">INSTANCE ACTIVITY</div>
@@ -74,9 +86,19 @@
           <div id="statusChart" class="chart-container"></div>
         </div>
         
+        <div class="chart-card wide">
+          <div class="chart-title">MESSAGE TYPES</div>
+          <div id="messageTypeChart" class="chart-container"></div>
+        </div>
+        
         <div class="chart-card">
-          <div class="chart-title">MESSAGE TRAFFIC</div>
-          <div id="messageChart" class="chart-container"></div>
+          <div class="chart-title">CONNECTION HEALTH</div>
+          <div id="healthChart" class="chart-container"></div>
+        </div>
+        
+        <div class="chart-card wide">
+          <div class="chart-title">ERROR TRENDS</div>
+          <div id="errorChart" class="chart-container"></div>
         </div>
         
         <!-- System Info -->
@@ -86,6 +108,8 @@
           <div class="info-line">Uptime: <span id="uptime">-</span></div>
           <div class="info-line">API Status: <span id="apiStatus">Checking...</span></div>
           <div class="info-line">Data Version: <span id="dataVersion">-</span></div>
+          <div class="info-line">Error Rate: <span id="errorRateValue">0</span>%</div>
+          <div class="info-line">Active: <span id="activePercent">0</span>%</div>
         </div>
         
         <!-- Instance List -->
@@ -98,7 +122,26 @@
                   <th>Instance ID</th>
                   <th>User Agent</th>
                   <th>Last Active</th>
+                  <th>Uptime</th>
                   <th>Status</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- Error Log -->
+        <div class="table-card wide">
+          <div class="chart-title">RECENT ERRORS</div>
+          <div class="table-container">
+            <table id="errorsTable">
+              <thead>
+                <tr>
+                  <th>Instance</th>
+                  <th>Error Type</th>
+                  <th>Message</th>
+                  <th>Time</th>
                 </tr>
               </thead>
               <tbody></tbody>

@@ -3,8 +3,8 @@ const CONFIG = {
   refreshInterval: 5000,
   apiBaseUrl: '',
   timeouts: {
-    concurrent: 30 * 60 * 1000, // 30 minutes
-    disconnected: 12 * 60 * 60 * 1000 // 12 hours
+    concurrent: 30 * 60 * 1000,
+    disconnected: 12 * 60 * 60 * 1000
   }
 };
 
@@ -12,14 +12,20 @@ const CONFIG = {
 let charts = {
   activity: null,
   status: null,
-  message: null
+  messageType: null,
+  health: null,
+  error: null
 };
 
 // State
 let appState = {
   lastUpdate: null,
   startTime: Date.now(),
-  previousStats: null
+  previousStats: null,
+  chartDataHistory: {
+    activity: [],
+    errors: []
+  }
 };
 
 // DOM Elements
@@ -31,6 +37,8 @@ const elements = {
   totalUsers: document.getElementById('totalUsers'),
   activeUsers: document.getElementById('activeUsers'),
   totalMessages: document.getElementById('totalMessages'),
+  errorRate: document.getElementById('errorRate'),
+  avgUptime: document.getElementById('avgUptime'),
   
   // System
   lastUpdate: document.getElementById('lastUpdate'),
@@ -38,9 +46,12 @@ const elements = {
   apiStatus: document.getElementById('apiStatus'),
   dataVersion: document.getElementById('dataVersion'),
   connectionStatus: document.getElementById('connectionStatus'),
+  errorRateValue: document.getElementById('errorRateValue'),
+  activePercent: document.getElementById('activePercent'),
   
   // Tables
-  instancesTable: document.querySelector('#instancesTable tbody')
+  instancesTable: document.querySelector('#instancesTable tbody'),
+  errorsTable: document.querySelector('#errorsTable tbody')
 };
 
 // Initialize application
@@ -65,17 +76,30 @@ async function init() {
 function initCharts() {
   charts.activity = echarts.init(document.getElementById('activityChart'));
   charts.status = echarts.init(document.getElementById('statusChart'));
-  charts.message = echarts.init(document.getElementById('messageChart'));
+  charts.messageType = echarts.init(document.getElementById('messageTypeChart'));
+  charts.health = echarts.init(document.getElementById('healthChart'));
+  charts.error = echarts.init(document.getElementById('errorChart'));
   
   // Set basic options for all charts
   Object.values(charts).forEach(chart => {
     chart.setOption({
       backgroundColor: 'transparent',
       tooltip: {
-        trigger: 'item'
+        trigger: 'item',
+        textStyle: {
+          color: '#fff'
+        },
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        borderColor: '#0ff',
+        borderWidth: 1
       },
       textStyle: {
         color: '#0ff'
+      },
+      legend: {
+        textStyle: {
+          color: '#0ff'
+        }
       }
     });
   });
@@ -88,9 +112,11 @@ async function fetchData() {
     elements.apiStatus.textContent = 'Fetching...';
     elements.connectionStatus.textContent = 'Updating data...';
     
-    const [stats, instances] = await Promise.all([
+    const [stats, instances, health, errors] = await Promise.all([
       fetchJson('/api/stats'),
-      fetchJson('/api/instances')
+      fetchJson('/api/instances'),
+      fetchJson('/api/connection-health'),
+      fetchJson('/api/errors')
     ]);
     
     const fetchDuration = (performance.now() - startTime).toFixed(2);
@@ -103,13 +129,17 @@ async function fetchData() {
     elements.lastUpdate.textContent = appState.lastUpdate.toLocaleTimeString();
     
     // Update stats
-    updateStats(stats, instances);
+    updateStats(stats, health);
     
     // Update charts
-    updateCharts(stats, instances);
+    updateCharts(stats, health);
     
-    // Update instance table
+    // Update tables
     updateInstanceTable(instances);
+    updateErrorTable(errors);
+    
+    // Store historical data for trends
+    updateChartDataHistory(stats, health);
     
   } catch (error) {
     console.error('Failed to fetch data:', error);
@@ -121,7 +151,7 @@ async function fetchData() {
 }
 
 // Update stats display
-function updateStats(stats, instances) {
+function updateStats(stats, health) {
   // Basic stats
   elements.totalInstances.textContent = stats.totalInstances;
   elements.activeInstances.textContent = stats.activeInstances;
@@ -129,7 +159,13 @@ function updateStats(stats, instances) {
   elements.totalUsers.textContent = stats.totalUsers;
   elements.activeUsers.textContent = stats.activeUsers;
   elements.totalMessages.textContent = stats.statistics.totalMessages;
-  elements.dataVersion.textContent = stats.statistics.version || '1.0.0';
+  elements.dataVersion.textContent = stats.settings.version || '2.0.0';
+  
+  // New stats
+  elements.errorRate.textContent = health.errorRate || 0;
+  elements.errorRateValue.textContent = health.errorRate || 0;
+  elements.avgUptime.textContent = formatUptime(health.avgUptime);
+  elements.activePercent.textContent = calculateActivePercent(stats);
   
   // Calculate trends if we have previous data
   if (appState.previousStats) {
@@ -139,9 +175,27 @@ function updateStats(stats, instances) {
     updateTrend('user', stats.totalUsers, appState.previousStats.totalUsers);
     updateTrend('activeUser', stats.activeUsers, appState.previousStats.activeUsers);
     updateTrend('message', stats.statistics.totalMessages, appState.previousStats.statistics.totalMessages);
+    updateTrend('error', health.errorRate, appState.previousStats.errorRate);
+    updateTrend('uptime', health.avgUptime, appState.previousStats.avgUptime);
   }
   
-  appState.previousStats = stats;
+  appState.previousStats = {...stats, ...health};
+}
+
+function calculateActivePercent(stats) {
+  if (stats.totalInstances === 0) return 0;
+  return ((stats.activeInstances / stats.totalInstances) * 100).toFixed(1);
+}
+
+function formatUptime(ms) {
+  if (!ms) return '0s';
+  const seconds = Math.floor(ms / 1000);
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  return `${days > 0 ? days + 'd ' : ''}${hours > 0 ? hours + 'h ' : ''}${mins}m ${secs}s`;
 }
 
 // Update trend indicators
@@ -163,7 +217,7 @@ function updateTrend(type, current, previous) {
 }
 
 // Update charts
-function updateCharts(stats, instances) {
+function updateCharts(stats, health) {
   // Activity chart (line)
   charts.activity.setOption({
     xAxis: {
@@ -179,8 +233,13 @@ function updateCharts(stats, instances) {
       data: Object.values(stats.statistics.dailyActive),
       type: 'line',
       smooth: true,
-      lineStyle: { color: '#0ff' },
-      areaStyle: { color: 'rgba(0, 255, 255, 0.3)' }
+      lineStyle: { color: '#0ff', width: 3 },
+      areaStyle: { color: 'rgba(0, 255, 255, 0.3)' },
+      symbol: 'circle',
+      symbolSize: 8,
+      itemStyle: {
+        color: '#0ff'
+      }
     }]
   });
   
@@ -188,29 +247,154 @@ function updateCharts(stats, instances) {
   charts.status.setOption({
     series: [{
       type: 'pie',
-      radius: '70%',
+      radius: ['50%', '70%'],
       data: [
         { value: stats.activeInstances, name: 'Active', itemStyle: { color: '#0f0' }},
         { value: stats.inactiveInstances, name: 'Inactive', itemStyle: { color: '#f00' }}
       ],
-      label: { color: '#fff' }
+      label: { 
+        color: '#fff',
+        formatter: '{b}: {c} ({d}%)'
+      },
+      emphasis: {
+        itemStyle: {
+          shadowBlur: 10,
+          shadowOffsetX: 0,
+          shadowColor: 'rgba(0, 0, 0, 0.5)'
+        }
+      }
     }]
   });
   
-  // Message chart (bar)
-  charts.message.setOption({
+  // Message type chart (bar)
+  const messageTypes = stats.statistics.messageTypes || {};
+  charts.messageType.setOption({
     xAxis: {
       type: 'category',
-      data: ['Messages']
+      data: Object.keys(messageTypes),
+      axisLabel: { 
+        color: '#0ff',
+        rotate: 30
+      }
     },
     yAxis: {
-      type: 'value'
+      type: 'value',
+      axisLabel: { color: '#0ff' }
     },
     series: [{
-      data: [stats.statistics.totalMessages],
+      data: Object.values(messageTypes),
       type: 'bar',
-      itemStyle: { color: '#0ff' }
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#0ff' },
+          { offset: 1, color: '#00f' }
+        ])
+      }
     }]
+  });
+  
+  // Health chart (gauge)
+  charts.health.setOption({
+    series: [{
+      type: 'gauge',
+      center: ['50%', '60%'],
+      startAngle: 180,
+      endAngle: 0,
+      min: 0,
+      max: 100,
+      splitNumber: 10,
+      radius: '100%',
+      axisLine: {
+        lineStyle: {
+          width: 30,
+          color: [
+            [0.3, '#f00'],
+            [0.7, '#ff0'],
+            [1, '#0f0']
+          ]
+        }
+      },
+      pointer: {
+        itemStyle: {
+          color: '#0ff'
+        },
+        length: '60%',
+        width: 8
+      },
+      axisTick: {
+        distance: -30,
+        length: 8,
+        lineStyle: {
+          color: '#fff',
+          width: 2
+        }
+      },
+      splitLine: {
+        distance: -30,
+        length: 30,
+        lineStyle: {
+          color: '#fff',
+          width: 4
+        }
+      },
+      axisLabel: {
+        color: '#fff',
+        distance: 25,
+        fontSize: 14
+      },
+      detail: {
+        valueAnimation: true,
+        formatter: '{value}%',
+        color: '#0ff',
+        fontSize: 20
+      },
+      data: [{
+        value: calculateActivePercent(stats)
+      }]
+    }]
+  });
+  
+  // Error chart (line)
+  charts.error.setOption({
+    xAxis: {
+      type: 'category',
+      data: Object.keys(stats.statistics.errors || {}),
+      axisLabel: { color: '#0ff' }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#0ff' }
+    },
+    series: [{
+      data: Object.values(stats.statistics.errors || {}),
+      type: 'line',
+      smooth: true,
+      lineStyle: { color: '#f00', width: 3 },
+      areaStyle: { color: 'rgba(255, 0, 0, 0.3)' },
+      symbol: 'diamond',
+      symbolSize: 10,
+      itemStyle: {
+        color: '#f00'
+      }
+    }]
+  });
+}
+
+function updateChartDataHistory(stats, health) {
+  // Keep last 30 data points for each chart
+  if (appState.chartDataHistory.activity.length >= 30) {
+    appState.chartDataHistory.activity.shift();
+    appState.chartDataHistory.errors.shift();
+  }
+  
+  appState.chartDataHistory.activity.push({
+    date: new Date().toLocaleTimeString(),
+    value: stats.activeInstances
+  });
+  
+  appState.chartDataHistory.errors.push({
+    date: new Date().toLocaleTimeString(),
+    value: Object.values(stats.statistics.errors || {}).reduce((a, b) => a + b, 0)
   });
 }
 
@@ -235,16 +419,42 @@ function updateInstanceTable(instances) {
     const lastActive = new Date(instance.lastActive);
     const lastActiveStr = lastActive.toLocaleTimeString();
     
+    // Uptime
+    const uptime = formatUptime(now - instance.firstSeen);
+    
     // User agent (shortened)
-    const userAgent = instance.userAgent.length > 20 ? 
+    const userAgent = instance.userAgent?.length > 20 ? 
       instance.userAgent.substring(0, 17) + '...' : 
-      instance.userAgent;
+      instance.userAgent || 'Unknown';
     
     row.innerHTML = `
       <td>${id.substring(0, 8)}...</td>
       <td>${userAgent}</td>
       <td>${lastActiveStr}</td>
+      <td>${uptime}</td>
       <td>${status}</td>
+    `;
+    
+    tbody.appendChild(row);
+  });
+}
+
+// Update error table
+function updateErrorTable(errors) {
+  const tbody = elements.errorsTable;
+  tbody.innerHTML = '';
+  
+  const recentErrors = errors.slice(0, 10); // Show last 10 errors
+  
+  recentErrors.forEach(error => {
+    const row = document.createElement('tr');
+    const time = new Date(error.timestamp).toLocaleTimeString();
+    
+    row.innerHTML = `
+      <td>${error.instanceId?.substring(0, 8) || 'System'}</td>
+      <td>${error.errorType}</td>
+      <td>${error.error.substring(0, 50)}${error.error.length > 50 ? '...' : ''}</td>
+      <td>${time}</td>
     `;
     
     tbody.appendChild(row);
