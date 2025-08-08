@@ -459,6 +459,27 @@ app.get('/api/users', async (req, res) => {
 });
 
 // Connection health endpoint
+// Add this new endpoint before the server starts
+app.get('/api/errors', async (req, res) => {
+  const db = await loadDB();
+  const now = Date.now();
+  
+  // Collect all errors from instances
+  const errors = Object.values(db.instances)
+    .filter(i => i.lastDisconnect)
+    .map(i => ({
+      instanceId: i.id,
+      errorType: i.lastDisconnect.reason,
+      error: `Disconnected: ${i.lastDisconnect.reason}`,
+      timestamp: i.lastDisconnect.timestamp
+    }))
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 50); // Return last 50 errors
+
+  res.json(errors);
+});
+
+// Update the connection health endpoint to include more detailed status
 app.get('/api/connection-health', async (req, res) => {
   const db = await loadDB();
   const now = Date.now();
@@ -476,10 +497,15 @@ app.get('/api/connection-health', async (req, res) => {
     return sum + (i.lastActive - i.firstSeen);
   }, 0) / (instances.length || 1);
   
+  const totalErrors = Object.values(db.statistics.errors).reduce((a, b) => a + b, 0);
+  const totalRequests = db.statistics.totalConnections + db.statistics.totalMessages;
+  const errorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
+  
   res.json({
     activeCount: activeInstances.length,
     inactiveCount: inactiveInstances.length,
     avgUptime,
+    errorRate,
     recentDisconnects: inactiveInstances
       .filter(i => (now - i.lastActive) < TIMEOUTS.disconnected)
       .sort((a, b) => b.lastActive - a.lastActive)
