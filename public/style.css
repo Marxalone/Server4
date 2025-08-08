@@ -1,11 +1,14 @@
 :root {
   --neon-blue: #0ff;
   --neon-purple: #f0f;
+  --neon-red: #f00;
+  --neon-yellow: #ff0;
   --dark-bg: #0a0a12;
   --terminal-bg: #000;
   --terminal-green: #0f0;
   --terminal-text: #0f0;
   --card-bg: rgba(0, 20, 30, 0.7);
+  --error-bg: rgba(30, 0, 0, 0.7);
 }
 
 * {
@@ -63,11 +66,7 @@ body {
   margin-left: 15px;
 }
 
-.terminal-status {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: #0f0;
-}
+
 
 .terminal-body {
   padding: 20px;
@@ -82,6 +81,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 3px;
   font-family: 'Orbitron', sans-serif;
+  text-shadow: 0 0 10px var(--neon-blue);
 }
 
 .glitch::before {
@@ -137,6 +137,15 @@ body {
   background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
 }
 
+.error-card {
+  background: var(--error-bg);
+  border: 1px solid var(--neon-red);
+}
+
+.error-card::before {
+  background: linear-gradient(90deg, var(--neon-red), var(--neon-yellow));
+}
+
 .wide {
   grid-column: span 2;
 }
@@ -166,6 +175,10 @@ body {
   font-size: 0.8rem;
 }
 
+.error-value {
+  color: var(--neon-red);
+}
+
 .chart-title, .info-title {
   color: var(--neon-blue);
   margin-bottom: 15px;
@@ -174,6 +187,10 @@ body {
   letter-spacing: 1px;
   border-bottom: 1px solid #333;
   padding-bottom: 5px;
+}
+
+.error-title {
+  color: var(--neon-red);
 }
 
 .chart-container {
@@ -197,6 +214,10 @@ th, td {
   border-bottom: 1px solid rgba(0, 255, 255, 0.2);
 }
 
+.error-table th, .error-table td {
+  border-bottom: 1px solid rgba(255, 0, 0, 0.2);
+}
+
 th {
   color: var(--neon-blue);
   font-weight: bold;
@@ -205,8 +226,17 @@ th {
   background: var(--card-bg);
 }
 
+.error-table th {
+  color: var(--neon-red);
+  background: var(--error-bg);
+}
+
 tr:hover {
   background: rgba(0, 255, 255, 0.1);
+}
+
+.error-table tr:hover {
+  background: rgba(255, 0, 0, 0.1);
 }
 
 .info-line {
@@ -220,11 +250,21 @@ tr:hover {
   float: right;
 }
 
+.error-line span {
+  color: var(--neon-red);
+}
+
 /* Animations */
 @keyframes pulse {
   0% { box-shadow: 0 0 5px var(--neon-blue); }
   50% { box-shadow: 0 0 20px var(--neon-blue); }
   100% { box-shadow: 0 0 5px var(--neon-blue); }
+}
+
+@keyframes pulse-red {
+  0% { box-shadow: 0 0 5px var(--neon-red); }
+  50% { box-shadow: 0 0 20px var(--neon-red); }
+  100% { box-shadow: 0 0 5px var(--neon-red); }
 }
 
 @keyframes flicker {
@@ -251,4 +291,66 @@ tr:hover {
   .stat-value {
     font-size: 1.8rem;
   }
+  
+  .chart-container {
+    height: 200px;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--neon-blue);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-purple);
+}
+
+/* Add these new styles */
+.success {
+  color: #0f0;
+}
+
+.warning {
+  color: #ff0;
+}
+
+.error {
+  color: #f00;
+}
+
+.connection-healthy {
+  color: #0f0;
+  animation: pulse 2s infinite;
+}
+
+.connection-warning {
+  color: #ff0;
+  animation: pulse 2s infinite;
+}
+
+.connection-critical {
+  color: #f00;
+  animation: pulse-red 1s infinite;
+}
+
+/* Update the terminal status styles */
+.terminal-status {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: bold;
+  padding: 2px 8px;
+  color: #0f0;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
 }

@@ -106,23 +106,38 @@ function initCharts() {
 }
 
 // Fetch data from API
+// Update the fetchData function to handle errors better
 async function fetchData() {
   try {
     const startTime = performance.now();
     elements.apiStatus.textContent = 'Fetching...';
     elements.connectionStatus.textContent = 'Updating data...';
     
-    const [stats, instances, health, errors] = await Promise.all([
+    const [stats, instances, health] = await Promise.all([
       fetchJson('/api/stats'),
       fetchJson('/api/instances'),
-      fetchJson('/api/connection-health'),
-      fetchJson('/api/errors')
+      fetchJson('/api/connection-health')
     ]);
+    
+    // Get errors only if the endpoint exists
+    let errors = [];
+    try {
+      errors = await fetchJson('/api/errors');
+    } catch (e) {
+      console.warn('Could not fetch errors:', e);
+    }
     
     const fetchDuration = (performance.now() - startTime).toFixed(2);
     elements.apiStatus.textContent = `OK (${fetchDuration}ms)`;
-    elements.connectionStatus.textContent = 'Connected';
-    elements.connectionStatus.style.color = '#0f0';
+    
+    // Update connection status based on health
+    if (health.healthStatus === 'healthy') {
+      elements.connectionStatus.textContent = 'Connected';
+      elements.connectionStatus.style.color = '#0f0';
+    } else {
+      elements.connectionStatus.textContent = 'Disconnected';
+      elements.connectionStatus.style.color = '#f00';
+    }
     
     // Update last update time
     appState.lastUpdate = new Date(stats.lastUpdate);
@@ -149,6 +164,8 @@ async function fetchData() {
     elements.connectionStatus.style.color = '#f00';
   }
 }
+
+
 
 // Update stats display
 function updateStats(stats, health) {
@@ -399,21 +416,31 @@ function updateChartDataHistory(stats, health) {
 }
 
 // Update instance table
+// Update the instance table to show better status info
 function updateInstanceTable(instances) {
   const tbody = elements.instancesTable;
   tbody.innerHTML = '';
   
   const now = Date.now();
-  const sortedInstances = Object.entries(instances.instances)
-    .sort((a, b) => b[1].lastActive - a[1].lastActive);
+  const sortedInstances = instances.instances
+    .sort((a, b) => b.lastActive - a.lastActive);
   
-  sortedInstances.forEach(([id, instance]) => {
+  sortedInstances.forEach(instance => {
     const row = document.createElement('tr');
     
     // Status indicator
-    const status = instance.status === 'connected' && 
-      (now - instance.lastActive) < CONFIG.timeouts.concurrent ?
-      '🟢' : '🔴';
+    let status = '🔴 Disconnected';
+    let statusClass = 'error';
+    
+    if (instance.status === 'connected') {
+      if ((now - instance.lastActive) < CONFIG.timeouts.concurrent) {
+        status = '🟢 Active';
+        statusClass = 'success';
+      } else {
+        status = '🟡 Idle';
+        statusClass = 'warning';
+      }
+    }
     
     // Last active time
     const lastActive = new Date(instance.lastActive);
@@ -428,17 +455,16 @@ function updateInstanceTable(instances) {
       instance.userAgent || 'Unknown';
     
     row.innerHTML = `
-      <td>${id.substring(0, 8)}...</td>
+      <td>${instance.id.substring(0, 8)}...</td>
       <td>${userAgent}</td>
       <td>${lastActiveStr}</td>
       <td>${uptime}</td>
-      <td>${status}</td>
+      <td class="${statusClass}">${status}</td>
     `;
     
     tbody.appendChild(row);
   });
 }
-
 // Update error table
 function updateErrorTable(errors) {
   const tbody = elements.errorsTable;
