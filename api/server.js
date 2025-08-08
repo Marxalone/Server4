@@ -381,6 +381,30 @@ app.get('/api/errors', async (req, res) => {
   }
 });
 
+
+// Add this new endpoint to get real-time disconnection status
+app.get('/api/disconnected-instances', async (req, res) => {
+  const db = await loadDB();
+  const now = Date.now();
+  
+  const disconnected = Object.values(db.instances).filter(instance => {
+    return instance.status === 'disconnected' || 
+           (now - instance.lastActive) > TIMEOUTS.concurrent;
+  });
+
+  res.json({
+    count: disconnected.length,
+    instances: disconnected.map(i => ({
+      id: i.id,
+      lastActive: i.lastActive,
+      reason: i.lastDisconnect?.reason || 'timeout'
+    }))
+  });
+});
+
+// Update the /api/stats endpoint to include disconnected count
+
+
 // Enhanced statistics endpoint
 app.get('/api/stats', async (req, res) => {
   const db = await loadDB();
@@ -390,6 +414,11 @@ app.get('/api/stats', async (req, res) => {
     i.status === 'connected' && (now - i.lastActive) < TIMEOUTS.concurrent
   );
   
+  // Add this calculation
+  const disconnectedCount = Object.values(db.instances).filter(i => 
+    i.status === 'disconnected' || (now - i.lastActive) >= TIMEOUTS.concurrent
+  ).length;
+
   const inactiveInstances = Object.values(db.instances).filter(i => 
     i.status !== 'connected' || (now - i.lastActive) >= TIMEOUTS.concurrent
   );
@@ -397,6 +426,7 @@ app.get('/api/stats', async (req, res) => {
   res.json({
     totalInstances: Object.keys(db.instances).length,
     activeInstances: activeInstances.length,
+    disconnectedInstances: disconnectedCount,
     inactiveInstances: inactiveInstances.length,
     totalUsers: Object.keys(db.users).length,
     activeUsers: Object.values(db.users).filter(u => 
