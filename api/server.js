@@ -54,7 +54,6 @@ app.use(compression());
 app.set('trust proxy', 1); // Or true if you need to trust multiple hops
 
 // Then modify your rate limiter configuration:
-const rateLimit = require('express-rate-limit');
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
