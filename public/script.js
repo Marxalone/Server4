@@ -54,25 +54,7 @@ const elements = {
   errorsTable: document.querySelector('#errorsTable tbody')
 };
 // Add this new function to check disconnections
-async function checkDisconnections() {
-  try {
-    const { count, instances } = await fetchJson('/api/disconnected-instances');
-    
-    // Update UI if disconnections found
-    if (count > 0) {
-      updateConnectionStatus();
-      updateInstanceTable();
-      
-      // Show warning if > 20% disconnected
-      const stats = await fetchJson('/api/stats');
-      if (count / stats.totalInstances > 0.2) {
-        showDisconnectionWarning(count);
-      }
-    }
-  } catch (error) {
-    console.error('Disconnection check failed:', error);
-  }
-}
+
 
 
 // Add this new UI warning function
@@ -88,7 +70,7 @@ async function init() {
   await fetchData();
   
   // Check disconnections every 10 seconds
-  setInterval(checkDisconnections, 10000);
+  
   
   // Start periodic updates
   setInterval(fetchData, CONFIG.refreshInterval);
@@ -98,16 +80,6 @@ async function init() {
   window.addEventListener('resize', handleResize);
 }
 
-function showDisconnectionWarning(count) {
-  const warning = document.createElement('div');
-  warning.className = 'disconnection-warning';
-  warning.innerHTML = `⚠️ ${count} instances disconnected`;
-  document.body.appendChild(warning);
-  
-  setTimeout(() => {
-    warning.remove();
-  }, 5000);
-}
 
 
 // Initialize charts
@@ -458,7 +430,6 @@ function updateChartDataHistory(stats, health) {
 
 // Update instance table
 // Update the instance table to show better status info
-
 function updateInstanceTable(instances) {
   const tbody = elements.instancesTable;
   tbody.innerHTML = '';
@@ -471,17 +442,18 @@ function updateInstanceTable(instances) {
     const row = document.createElement('tr');
     
     // Status indicator
-    // Calculate status
-    let status, statusClass;
-    if (instance.status === 'disconnected') {
-      status = '🔴 Disconnected';
-      statusClass = 'error';
-    } else if ((now - instance.lastActive) > CONFIG.timeouts.concurrent) {
-      status = '⚪ Timeout';
-      statusClass = 'timeout';
-    } else {
-      status = '🟢 Active';
-      statusClass = 'success';
+    let status = '🔴 Disconnected';
+    let statusClass = 'error';
+    
+    if (instance.status === 'connected') {
+      if ((now - instance.lastActive) < CONFIG.timeouts.concurrent) {
+        status = '🟢 Active';
+        statusClass = 'success';
+      } else {
+        status = '🟡 Idle';
+        statusClass = 'warning';
+      }
+    }
     
     // Last active time
     const lastActive = new Date(instance.lastActive);
@@ -497,8 +469,6 @@ function updateInstanceTable(instances) {
     
     row.innerHTML = `
       <td>${instance.id.substring(0, 8)}...</td>
-      td>${instance.userAgent || 'Unknown'}</td>
-      <td>${new Date(instance.lastActive).toLocaleTimeString()}</td>
       <td>${userAgent}</td>
       <td>${lastActiveStr}</td>
       <td>${uptime}</td>
