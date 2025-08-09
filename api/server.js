@@ -6,13 +6,30 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const { body, validationResult } = require('express-validator');
 const app = express();
-const { PORT, TIMEOUTS, LOGGING } = require('../config');
+
+// Configuration - moved to top for better visibility
+const CONFIG = {
+  PORT: process.env.PORT || 3000,
+  TIMEOUTS: {
+    concurrent: 5 * 60 * 1000,    // 5 minutes for concurrent activity
+    disconnected: 24 * 60 * 60 * 1000, // 24 hours for full disconnection
+    heartbeat: 2 * 60 * 1000      // 2 minutes for heartbeat timeout
+  },
+  LOGGING: {
+    enable: true
+  },
+  RATE_LIMIT: {
+    windowMs: 15 * 60 * 1000,     // 15 minutes
+    max: 100                       // limit each IP to 100 requests per windowMs
+  }
+};
 
 const DB_PATH = path.join(__dirname, '../db/db.json');
 const DB_BACKUP_PATH = path.join(__dirname, '../db/backups');
 const LOG_PATH = path.join(__dirname, '../logs/errors.log');
+const INSTANCE_STORAGE_PATH = path.join(__dirname, '../data/instance_storage.json');
 
-// Enhanced data structure
+// Enhanced data structure with heartbeat tracking
 const initialDB = {
   instances: {},
   users: {},
@@ -21,6 +38,7 @@ const initialDB = {
     currentConnections: 0,
     peakConnections: 0,
     disconnections: 0,
+    reconnections: 0,
     totalMessages: 0,
     dailyActive: {},
     dailyDisconnections: {},
@@ -30,10 +48,11 @@ const initialDB = {
     statusUpdates: {},
     messageReactions: {},
     errors: {},
-    systemInfo: {}
+    systemInfo: {},
+    heartbeats: 0
   },
   settings: {
-    version: "2.0.0",
+    version: "2.1.0",  // Updated version
     createdAt: new Date().toISOString(),
     lastMaintenance: null
   }
@@ -49,12 +68,15 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.use(compression());
 
 // Rate limiting
-
-// Trust Render's proxy
+const limiter = rateLimit({
+  windowMs: CONFIG.RATE_LIMIT.windowMs,
+  max: CONFIG.RATE_LIMIT.max
+});
+app.use(limiter);
 
 // Enhanced logging
 const logError = async (message, ip, stack = '') => {
-  if (LOGGING.enable) {
+  if (CONFIG.LOGGING.enable) {
     const timestamp = new Date().toISOString();
     const log = `[${timestamp}] [${ip}] ${message}\n${stack}\n\n`;
     await fs.appendFile(LOG_PATH, log).catch(() => {});
@@ -86,6 +108,29 @@ const saveDB = async (data) => {
   }
 };
 
+// Instance ID storage functions
+const loadInstanceStorage = async () => {
+  try {
+    if (fs.existsSync(INSTANCE_STORAGE_PATH)) {
+      const data = await fs.readFile(INSTANCE_STORAGE_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+    return {};
+  } catch (e) {
+    await logError(`Instance storage load error: ${e.message}`, 'SYSTEM', e.stack);
+    return {};
+  }
+};
+
+const saveInstanceStorage = async (data) => {
+  try {
+    await fs.mkdir(path.dirname(INSTANCE_STORAGE_PATH), { recursive: true });
+    await fs.writeFile(INSTANCE_STORAGE_PATH, JSON.stringify(data, null, 2));
+  } catch (e) {
+    await logError(`Instance storage save error: ${e.message}`, 'SYSTEM', e.stack);
+  }
+};
+
 const ensurePersistentData = async () => {
   try {
     await fs.mkdir(DB_BACKUP_PATH, { recursive: true });
@@ -102,7 +147,7 @@ const ensurePersistentData = async () => {
       .slice(0, -30);
     
     for (const file of oldFiles) {
-      await fs.unlink(path.join(DB_BACKUP_PATH, file));
+      await fs.unlink(path.join(DB_BACKUP_PATH, file)).catch(() => {});
     }
     
     db.settings.lastMaintenance = new Date().toISOString();
@@ -112,13 +157,40 @@ const ensurePersistentData = async () => {
   }
 };
 
+// Cleanup inactive instances
+const cleanupInactiveInstances = async () => {
+  try {
+    const db = await loadDB();
+    const now = Date.now();
+    let removedCount = 0;
+
+    Object.entries(db.instances).forEach(([id, instance]) => {
+      if ((now - instance.lastActive) > CONFIG.TIMEOUTS.disconnected) {
+        delete db.instances[id];
+        removedCount++;
+      }
+    });
+
+    if (removedCount > 0) {
+      await saveDB(db);
+      console.log(`Cleaned up ${removedCount} inactive instances`);
+    }
+  } catch (e) {
+    await logError(`Instance cleanup error: ${e.message}`, 'SYSTEM', e.stack);
+  }
+};
+
 // Run maintenance every hour
-setInterval(ensurePersistentData, 86400000);
+setInterval(ensurePersistentData, 3600000);
+// Run cleanup every 6 hours
+setInterval(cleanupInactiveInstances, 6 * 3600000);
 
 // Helper functions
 function updateConnectionStats(db, now) {
   db.statistics.currentConnections = Object.values(db.instances)
-    .filter(i => i.status === 'connected' && (now - i.lastActive) < TIMEOUTS.concurrent)
+    .filter(i => i.status === 'connected' && 
+          (now - i.lastActive) < CONFIG.TIMEOUTS.concurrent &&
+          (now - (i.lastHeartbeat || 0)) < CONFIG.TIMEOUTS.heartbeat)
     .length;
     
   if (db.statistics.currentConnections > db.statistics.peakConnections) {
@@ -130,13 +202,24 @@ function getDailyKey() {
   return new Date().toISOString().split('T')[0];
 }
 
+function calculateAvgResponseTime(db) {
+  // Implement your response time calculation logic
+  return 0;
+}
+
+function calculateErrorRate(db) {
+  const totalErrors = Object.values(db.statistics.errors).reduce((a, b) => a + b, 0);
+  const totalRequests = db.statistics.totalConnections + db.statistics.totalMessages;
+  return totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
+}
+
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
   next();
 });
 
-// Enhanced connection tracking
+// Enhanced connection tracking with persistent instance IDs
 app.post('/api/connect', 
   [
     body('userId').isString().notEmpty(),
@@ -155,11 +238,19 @@ app.post('/api/connect',
     const today = getDailyKey();
 
     const db = await loadDB();
+    const instanceStorage = await loadInstanceStorage();
     
-    // Generate unique instance ID if not provided
+    // Try to find existing instance ID for this user
     let instanceId = req.body.instanceId;
-    if (!instanceId || db.instances[instanceId]) {
-      instanceId = `marxbot_${Object.keys(db.instances).length + 1}`;
+    if (!instanceId && instanceStorage[userId]) {
+      instanceId = instanceStorage[userId];
+    }
+
+    // If no existing ID or it's not in DB, generate new one
+    if (!instanceId || !db.instances[instanceId]) {
+      instanceId = `marxbot_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      instanceStorage[userId] = instanceId;
+      await saveInstanceStorage(instanceStorage);
     }
 
     // Instance management
@@ -168,18 +259,27 @@ app.post('/api/connect',
         id: instanceId,
         firstSeen: now,
         lastActive: now,
+        lastHeartbeat: now,
         status: 'connected',
         userAgent,
         ipAddress: ip,
         userId,
         connectionCount: 1,
-        lastDisconnect: null
+        lastDisconnect: null,
+        systemInfo: null
       };
       db.statistics.totalConnections += 1;
     } else {
+      // Update existing instance
+      const wasDisconnected = db.instances[instanceId].status === 'disconnected';
       db.instances[instanceId].lastActive = now;
+      db.instances[instanceId].lastHeartbeat = now;
       db.instances[instanceId].status = 'connected';
       db.instances[instanceId].connectionCount += 1;
+      
+      if (wasDisconnected) {
+        db.statistics.reconnections += 1;
+      }
     }
 
     // User management
@@ -204,6 +304,33 @@ app.post('/api/connect',
 
     await saveDB(db);
     res.json({ success: true, instanceId });
+  }
+);
+
+// Heartbeat endpoint
+app.post('/api/heartbeat', 
+  [
+    body('instanceId').isString().notEmpty()
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { instanceId } = req.body;
+    const now = Date.now();
+
+    const db = await loadDB();
+    
+    if (db.instances[instanceId]) {
+      db.instances[instanceId].lastHeartbeat = now;
+      db.instances[instanceId].lastActive = now;
+      db.statistics.heartbeats = (db.statistics.heartbeats || 0) + 1;
+      await saveDB(db);
+    }
+
+    res.json({ success: true });
   }
 );
 
@@ -308,7 +435,10 @@ app.post('/api/track',
       db.users[userId].totalReactions += 1;
     }
     else if (eventType === 'heartbeat') {
-      // Just update lastActive without counting as message
+      if (db.instances[instanceId]) {
+        db.instances[instanceId].lastHeartbeat = now;
+        db.statistics.heartbeats = (db.statistics.heartbeats || 0) + 1;
+      }
     }
 
     await saveDB(db);
@@ -335,6 +465,7 @@ app.post('/api/system-info',
     
     if (db.instances[instanceId]) {
       db.instances[instanceId].systemInfo = systemInfo;
+      db.instances[instanceId].lastHeartbeat = now;
       db.statistics.systemInfo[instanceId] = {
         ...systemInfo,
         lastUpdated: now
@@ -347,7 +478,6 @@ app.post('/api/system-info',
 );
 
 // Error tracking endpoint
-// Add this error endpoint (before app.listen)
 app.get('/api/errors', async (req, res) => {
   try {
     const db = await loadDB();
@@ -387,11 +517,15 @@ app.get('/api/stats', async (req, res) => {
   const now = Date.now();
   
   const activeInstances = Object.values(db.instances).filter(i => 
-    i.status === 'connected' && (now - i.lastActive) < TIMEOUTS.concurrent
+    i.status === 'connected' && 
+    (now - i.lastActive) < CONFIG.TIMEOUTS.concurrent &&
+    (now - (i.lastHeartbeat || 0)) < CONFIG.TIMEOUTS.heartbeat
   );
   
   const inactiveInstances = Object.values(db.instances).filter(i => 
-    i.status !== 'connected' || (now - i.lastActive) >= TIMEOUTS.concurrent
+    i.status !== 'connected' || 
+    (now - i.lastActive) >= CONFIG.TIMEOUTS.concurrent ||
+    (now - (i.lastHeartbeat || 0)) >= CONFIG.TIMEOUTS.heartbeat
   );
   
   res.json({
@@ -400,7 +534,7 @@ app.get('/api/stats', async (req, res) => {
     inactiveInstances: inactiveInstances.length,
     totalUsers: Object.keys(db.users).length,
     activeUsers: Object.values(db.users).filter(u => 
-      (now - u.lastActive) < TIMEOUTS.concurrent
+      (now - u.lastActive) < CONFIG.TIMEOUTS.concurrent
     ).length,
     statistics: db.statistics,
     connectionHealth: {
@@ -408,24 +542,13 @@ app.get('/api/stats', async (req, res) => {
       avgResponseTime: calculateAvgResponseTime(db),
       errorRate: calculateErrorRate(db),
       recentDisconnects: inactiveInstances
-        .filter(i => (now - i.lastActive) < TIMEOUTS.disconnected)
+        .filter(i => (now - i.lastActive) < CONFIG.TIMEOUTS.disconnected)
         .sort((a, b) => b.lastActive - a.lastActive)
         .slice(0, 5)
     },
     lastUpdate: new Date().toISOString()
   });
 });
-
-function calculateAvgResponseTime(db) {
-  // Implement your response time calculation logic
-  return 0;
-}
-
-function calculateErrorRate(db) {
-  const totalErrors = Object.values(db.statistics.errors).reduce((a, b) => a + b, 0);
-  const totalRequests = db.statistics.totalConnections + db.statistics.totalMessages;
-  return totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
-}
 
 // Enhanced instance details endpoint
 app.get('/api/instances', async (req, res) => {
@@ -434,7 +557,9 @@ app.get('/api/instances', async (req, res) => {
   
   const instances = Object.values(db.instances).map(instance => ({
     ...instance,
-    isActive: instance.status === 'connected' && (now - instance.lastActive) < TIMEOUTS.concurrent,
+    isActive: instance.status === 'connected' && 
+              (now - instance.lastActive) < CONFIG.TIMEOUTS.concurrent &&
+              (now - (instance.lastHeartbeat || 0)) < CONFIG.TIMEOUTS.heartbeat,
     uptime: now - instance.firstSeen
   }));
   
@@ -453,7 +578,7 @@ app.get('/api/users', async (req, res) => {
   
   const users = Object.values(db.users).map(user => ({
     ...user,
-    isActive: (now - user.lastActive) < TIMEOUTS.concurrent
+    isActive: (now - user.lastActive) < CONFIG.TIMEOUTS.concurrent
   }));
   
   res.json({
@@ -465,38 +590,21 @@ app.get('/api/users', async (req, res) => {
 });
 
 // Connection health endpoint
-// Add this new endpoint before the server starts
-app.get('/api/errors', async (req, res) => {
-  const db = await loadDB();
-  const now = Date.now();
-  
-  // Collect all errors from instances
-  const errors = Object.values(db.instances)
-    .filter(i => i.lastDisconnect)
-    .map(i => ({
-      instanceId: i.id,
-      errorType: i.lastDisconnect.reason,
-      error: `Disconnected: ${i.lastDisconnect.reason}`,
-      timestamp: i.lastDisconnect.timestamp
-    }))
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, 50); // Return last 50 errors
-
-  res.json(errors);
-});
-
-// Update the connection health endpoint to include more detailed status
 app.get('/api/connection-health', async (req, res) => {
   const db = await loadDB();
   const now = Date.now();
   
   const instances = Object.values(db.instances);
   const activeInstances = instances.filter(i => 
-    i.status === 'connected' && (now - i.lastActive) < TIMEOUTS.concurrent
+    i.status === 'connected' && 
+    (now - i.lastActive) < CONFIG.TIMEOUTS.concurrent &&
+    (now - (i.lastHeartbeat || 0)) < CONFIG.TIMEOUTS.heartbeat
   );
   
   const inactiveInstances = instances.filter(i => 
-    i.status !== 'connected' || (now - i.lastActive) >= TIMEOUTS.concurrent
+    i.status !== 'connected' || 
+    (now - i.lastActive) >= CONFIG.TIMEOUTS.concurrent ||
+    (now - (i.lastHeartbeat || 0)) >= CONFIG.TIMEOUTS.heartbeat
   );
   
   const avgUptime = instances.reduce((sum, i) => {
@@ -507,39 +615,24 @@ app.get('/api/connection-health', async (req, res) => {
   const totalRequests = db.statistics.totalConnections + db.statistics.totalMessages;
   const errorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
   
+  // Determine health status
+  let healthStatus = 'healthy';
+  if (activeInstances.length === 0) {
+    healthStatus = 'critical';
+  } else if (inactiveInstances.length > activeInstances.length) {
+    healthStatus = 'degraded';
+  }
+  
   res.json({
     activeCount: activeInstances.length,
     inactiveCount: inactiveInstances.length,
     avgUptime,
     errorRate,
     recentDisconnects: inactiveInstances
-      .filter(i => (now - i.lastActive) < TIMEOUTS.disconnected)
+      .filter(i => (now - i.lastActive) < CONFIG.TIMEOUTS.disconnected)
       .sort((a, b) => b.lastActive - a.lastActive)
       .slice(0, 5),
-    healthStatus: activeInstances.length > 0 ? 'healthy' : 'critical'
-  });
-});
-
-// Instance uptime endpoint
-app.get('/api/instance/:id/uptime', async (req, res) => {
-  const db = await loadDB();
-  const instance = db.instances[req.params.id];
-  
-  if (!instance) {
-    return res.status(404).json({ error: 'Instance not found' });
-  }
-  
-  const now = Date.now();
-  const uptime = now - instance.firstSeen;
-  const lastSeen = new Date(instance.lastActive).toISOString();
-  
-  res.json({
-    id: req.params.id,
-    uptime,
-    lastSeen,
-    status: instance.status,
-    connectionCount: instance.connectionCount || 1,
-    systemInfo: instance.systemInfo || null
+    healthStatus
   });
 });
 
@@ -555,7 +648,8 @@ app.get('/health', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+app.listen(CONFIG.PORT, () => {
+  console.log(`✅ Server running at http://localhost:${CONFIG.PORT}`);
   ensurePersistentData(); // Run initial maintenance
+  cleanupInactiveInstances(); // Initial cleanup
 });
