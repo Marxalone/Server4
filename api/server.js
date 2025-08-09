@@ -6,7 +6,21 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const { body, validationResult } = require('express-validator');
 const app = express();
+//
 
+
+// ✅ Trust the first proxy (needed for express-rate-limit behind proxies)
+app.set('trust proxy', 1);
+
+// Your other middleware
+const rateLimit = require('express-rate-limit');
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
+
+// Rest of your code...
 // Configuration - moved to top for better visibility
 const CONFIG = {
   PORT: process.env.PORT || 3000,
