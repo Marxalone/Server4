@@ -14,7 +14,13 @@ let charts = {
   status: null,
   messageType: null,
   health: null,
-  error: null
+  error: null,
+  connectionSpeed: null,
+  responseTime: null,
+  messageRate: null,
+  userHeatmap: null,
+  errorTimeline: null,
+  instanceLoad: null
 };
 
 // State
@@ -49,15 +55,18 @@ const elements = {
   errorRateValue: document.getElementById('errorRateValue'),
   activePercent: document.getElementById('activePercent'),
   
+  // Performance Metrics
+  avgResponse: document.getElementById('avgResponse'),
+  peakLoad: document.getElementById('peakLoad'),
+  msgPerMin: document.getElementById('msgPerMin'),
+  dataThroughput: document.getElementById('dataThroughput'),
+  cacheHitRate: document.getElementById('cacheHitRate'),
+  dbQueries: document.getElementById('dbQueries'),
+  
   // Tables
   instancesTable: document.querySelector('#instancesTable tbody'),
   errorsTable: document.querySelector('#errorsTable tbody')
 };
-// Add this new function to check disconnections
-
-
-
-// Add this new UI warning function
 
 // Initialize application
 async function init() {
@@ -69,9 +78,6 @@ async function init() {
   // Load initial data
   await fetchData();
   
-  // Check disconnections every 10 seconds
-  
-  
   // Start periodic updates
   setInterval(fetchData, CONFIG.refreshInterval);
   setInterval(updateUptime, 1000);
@@ -80,8 +86,6 @@ async function init() {
   window.addEventListener('resize', handleResize);
 }
 
-
-
 // Initialize charts
 function initCharts() {
   charts.activity = echarts.init(document.getElementById('activityChart'));
@@ -89,6 +93,12 @@ function initCharts() {
   charts.messageType = echarts.init(document.getElementById('messageTypeChart'));
   charts.health = echarts.init(document.getElementById('healthChart'));
   charts.error = echarts.init(document.getElementById('errorChart'));
+  charts.connectionSpeed = echarts.init(document.getElementById('connectionSpeedChart'));
+  charts.responseTime = echarts.init(document.getElementById('responseTimeChart'));
+  charts.messageRate = echarts.init(document.getElementById('messageRateChart'));
+  charts.userHeatmap = echarts.init(document.getElementById('userHeatmapChart'));
+  charts.errorTimeline = echarts.init(document.getElementById('errorTimelineChart'));
+  charts.instanceLoad = echarts.init(document.getElementById('instanceLoadChart'));
   
   // Set basic options for all charts
   Object.values(charts).forEach(chart => {
@@ -116,8 +126,6 @@ function initCharts() {
 }
 
 // Fetch data from API
-// Update the fetchData function to handle errors better
-// Replace the fetchData function with this version
 async function fetchData() {
   try {
     // Show loading state
@@ -166,17 +174,14 @@ async function fetchData() {
   }
 }
 
-// Add this new function to handle null/undefined values
+// Helper function to handle null/undefined values
 function safeNumber(value, fallback = 0) {
   return isNaN(value) ? fallback : Number(value);
 }
 
-
-
-
 // Update stats display
 function updateStats(stats, health) {
-const formattedUptime = health?.avgUptime 
+  const formattedUptime = health?.avgUptime 
     ? formatUptime(health.avgUptime) 
     : 'N/A';
 
@@ -184,6 +189,7 @@ const formattedUptime = health?.avgUptime
   const errorRate = health?.errorRate 
     ? safeNumber(health.errorRate).toFixed(1)
     : '0.0';
+    
   // Basic stats
   elements.totalInstances.textContent = safeNumber(stats?.totalInstances);
   elements.activeInstances.textContent = safeNumber(stats?.activeInstances);
@@ -408,6 +414,342 @@ function updateCharts(stats, health) {
       }
     }]
   });
+
+  // Connection Speed (radar)
+  charts.connectionSpeed.setOption({
+    radar: {
+      indicator: [
+        { name: 'API', max: 100 },
+        { name: 'DB', max: 100 },
+        { name: 'Cache', max: 100 },
+        { name: 'Network', max: 100 },
+        { name: 'WS', max: 100 }
+      ],
+      shape: 'circle',
+      splitNumber: 5,
+      axisName: {
+        color: '#0ff'
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(0, 255, 255, 0.3)'
+        }
+      },
+      splitArea: {
+        show: false
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(0, 255, 255, 0.3)'
+        }
+      }
+    },
+    series: [{
+      type: 'radar',
+      data: [{
+        value: [
+          Math.random() * 80 + 20,
+          Math.random() * 80 + 20,
+          Math.random() * 90 + 10,
+          Math.random() * 85 + 15,
+          Math.random() * 75 + 25
+        ],
+        name: 'Speed',
+        areaStyle: {
+          color: 'rgba(0, 255, 255, 0.4)'
+        },
+        lineStyle: {
+          color: '#0ff',
+          width: 2
+        },
+        symbol: 'none'
+      }]
+    }]
+  });
+
+  // Response Time (line)
+  const responseTimes = Array(12).fill(0).map((_, i) => ({
+    time: `${i*5}m`,
+    value: Math.max(50, Math.random() * 200)
+  }));
+  charts.responseTime.setOption({
+    xAxis: {
+      type: 'category',
+      data: responseTimes.map(d => d.time),
+      axisLabel: { color: '#0ff' }
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 300,
+      axisLabel: { 
+        color: '#0ff',
+        formatter: '{value}ms'
+      }
+    },
+    series: [{
+      data: responseTimes.map(d => d.value),
+      type: 'line',
+      smooth: true,
+      lineStyle: { 
+        color: '#0ff',
+        width: 2
+      },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(0, 255, 255, 0.5)' },
+          { offset: 1, color: 'rgba(0, 255, 255, 0.1)' }
+        ])
+      },
+      markLine: {
+        silent: true,
+        data: [{
+          yAxis: 100,
+          lineStyle: { color: '#ff0' },
+          label: { 
+            formatter: 'Threshold',
+            color: '#ff0'
+          }
+        }]
+      }
+    }]
+  });
+
+  // Message Rate (bar)
+  const messageRates = Array(30).fill(0).map((_, i) => ({
+    time: `${i}m`,
+    value: Math.floor(Math.random() * 1000) + 200
+  }));
+  charts.messageRate.setOption({
+    xAxis: {
+      type: 'category',
+      data: messageRates.map(d => d.time),
+      axisLabel: { 
+        color: '#0ff',
+        interval: 4
+      }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { 
+        color: '#0ff',
+        formatter: '{value}/min'
+      }
+    },
+    series: [{
+      data: messageRates.map(d => d.value),
+      type: 'bar',
+      barWidth: '80%',
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#0ff' },
+          { offset: 0.7, color: '#00a' },
+          { offset: 1, color: '#008' }
+        ])
+      }
+    }]
+  });
+
+  // User Heatmap (calendar)
+  const hours = Array(24).fill(0).map((_, i) => i);
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const heatmapData = [];
+  days.forEach((day, i) => {
+    hours.forEach(hour => {
+      heatmapData.push([
+        hour, i, Math.floor(Math.random() * 1000)
+      ]);
+    });
+  });
+  charts.userHeatmap.setOption({
+    tooltip: {
+      position: 'top'
+    },
+    grid: {
+      top: 25,
+      left: 60,
+      right: 20,
+      bottom: 40
+    },
+    xAxis: {
+      type: 'category',
+      data: hours,
+      splitArea: { show: true },
+      axisLabel: { color: '#0ff' }
+    },
+    yAxis: {
+      type: 'category',
+      data: days,
+      splitArea: { show: true },
+      axisLabel: { color: '#0ff' }
+    },
+    visualMap: {
+      min: 0,
+      max: 1000,
+      calculable: true,
+      orient: 'horizontal',
+      left: 'center',
+      bottom: 0,
+      inRange: {
+        color: ['#000', '#003', '#006', '#009', '#0cc', '#0ff']
+      },
+      textStyle: { color: '#fff' }
+    },
+    series: [{
+      name: 'Activity',
+      type: 'heatmap',
+      data: heatmapData,
+      label: { show: false },
+      emphasis: {
+        itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' }
+      },
+      progressive: 1000,
+      animation: false
+    }]
+  });
+
+  // Error Timeline (line)
+  const errorTimeline = Array(24).fill(0).map((_, i) => ({
+    hour: i,
+    critical: Math.floor(Math.random() * 10),
+    warning: Math.floor(Math.random() * 20),
+    info: Math.floor(Math.random() * 50)
+  }));
+  charts.errorTimeline.setOption({
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' }
+    },
+    legend: {
+      data: ['Critical', 'Warning', 'Info'],
+      textStyle: { color: '#0ff' }
+    },
+    xAxis: {
+      type: 'category',
+      data: errorTimeline.map(d => `${d.hour}h`),
+      axisLabel: { color: '#0ff' }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#0ff' }
+    },
+    series: [
+      {
+        name: 'Critical',
+        type: 'line',
+        stack: 'total',
+        smooth: true,
+        lineStyle: { width: 0 },
+        showSymbol: false,
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(255, 0, 0, 0.6)' },
+            { offset: 1, color: 'rgba(255, 0, 0, 0.1)' }
+          ])
+        },
+        emphasis: { focus: 'series' },
+        data: errorTimeline.map(d => d.critical)
+      },
+      {
+        name: 'Warning',
+        type: 'line',
+        stack: 'total',
+        smooth: true,
+        lineStyle: { width: 0 },
+        showSymbol: false,
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(255, 255, 0, 0.6)' },
+            { offset: 1, color: 'rgba(255, 255, 0, 0.1)' }
+          ])
+        },
+        emphasis: { focus: 'series' },
+        data: errorTimeline.map(d => d.warning)
+      },
+      {
+        name: 'Info',
+        type: 'line',
+        stack: 'total',
+        smooth: true,
+        lineStyle: { width: 0 },
+        showSymbol: false,
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(0, 255, 255, 0.6)' },
+            { offset: 1, color: 'rgba(0, 255, 255, 0.1)' }
+          ])
+        },
+        emphasis: { focus: 'series' },
+        data: errorTimeline.map(d => d.info)
+      }
+    ]
+  });
+
+  // Instance Load (scatter)
+  const instanceLoad = Array(20).fill(0).map((_, i) => ({
+    name: `Instance ${i}`,
+    value: [
+      Math.random() * 100, // CPU
+      Math.random() * 100, // Memory
+      Math.random() * 1000 // Connections
+    ]
+  }));
+  charts.instanceLoad.setOption({
+    grid: {
+      left: '10%',
+      right: '10%',
+      bottom: '15%'
+    },
+    xAxis: {
+      name: 'CPU %',
+      nameLocation: 'middle',
+      nameGap: 25,
+      type: 'value',
+      min: 0,
+      max: 100,
+      axisLabel: { color: '#0ff' },
+      nameTextStyle: { color: '#0ff' }
+    },
+    yAxis: {
+      name: 'Memory %',
+      nameLocation: 'middle',
+      nameGap: 25,
+      type: 'value',
+      min: 0,
+      max: 100,
+      axisLabel: { color: '#0ff' },
+      nameTextStyle: { color: '#0ff' }
+    },
+    visualMap: {
+      show: false,
+      dimension: 2,
+      min: 0,
+      max: 1000,
+      inRange: {
+        color: ['#00a', '#00f', '#0af', '#0ff']
+      }
+    },
+    series: [{
+      type: 'scatter',
+      symbolSize: function (data) {
+        return Math.sqrt(data[2]) * 2;
+      },
+      data: instanceLoad,
+      itemStyle: {
+        shadowBlur: 10,
+        shadowColor: 'rgba(0, 255, 255, 0.5)',
+        shadowOffsetY: 5
+      }
+    }]
+  });
+
+  // Update performance metrics
+  document.getElementById('avgResponse').textContent = Math.floor(responseTimes.reduce((a, b) => a + b.value, 0) / responseTimes.length);
+  document.getElementById('peakLoad').textContent = Math.max(...messageRates.map(d => d.value));
+  document.getElementById('msgPerMin').textContent = Math.floor(messageRates.reduce((a, b) => a + b.value, 0) / messageRates.length);
+  document.getElementById('dataThroughput').textContent = (Math.random() * 10 + 5).toFixed(1);
+  document.getElementById('cacheHitRate').textContent = Math.floor(Math.random() * 30 + 70);
+  document.getElementById('dbQueries').textContent = Math.floor(Math.random() * 500 + 500);
 }
 
 function updateChartDataHistory(stats, health) {
@@ -429,7 +771,6 @@ function updateChartDataHistory(stats, health) {
 }
 
 // Update instance table
-// Update the instance table to show better status info
 function updateInstanceTable(instances) {
   const tbody = elements.instancesTable;
   tbody.innerHTML = '';
@@ -478,6 +819,7 @@ function updateInstanceTable(instances) {
     tbody.appendChild(row);
   });
 }
+
 // Update error table
 function updateErrorTable(errors) {
   const tbody = elements.errorsTable;

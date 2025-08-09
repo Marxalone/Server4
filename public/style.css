@@ -378,3 +378,74 @@ tr:hover {
 .terminal-status[data-status="degraded"] {
   animation: pulse-warning 1.5s infinite;
 }
+
+/* Add to style.css */
+/* New chart card styles */
+.chart-card.small {
+  height: 200px;
+}
+
+/* Sparkline styles */
+.sparkline-container {
+  display: flex;
+  align-items: center;
+  margin: 5px 0;
+}
+
+.sparkline-label {
+  font-size: 0.8rem;
+  color: #aaa;
+  width: 80px;
+}
+
+.sparkline {
+  flex-grow: 1;
+  height: 30px;
+  margin-left: 10px;
+}
+
+/* Status indicator dots */
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.status-dot.online {
+  background-color: #0f0;
+  box-shadow: 0 0 5px #0f0;
+}
+
+.status-dot.offline {
+  background-color: #f00;
+  box-shadow: 0 0 5px #f00;
+}
+
+.status-dot.warning {
+  background-color: #ff0;
+  box-shadow: 0 0 5px #ff0;
+}
+
+/* New animation for data refresh */
+@keyframes data-refresh {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+.refreshing {
+  animation: data-refresh 1.5s infinite;
+}
+
+/* New grid layout for smaller charts */
+@media (min-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  
+  .chart-card.small {
+    grid-column: span 1;
+  }
+}

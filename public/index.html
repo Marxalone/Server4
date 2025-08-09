@@ -100,7 +100,47 @@
           <div class="chart-title">ERROR TRENDS</div>
           <div id="errorChart" class="chart-container"></div>
         </div>
-        
+        <!-- Add these new chart cards to index.html right before the closing </div> of dashboard-grid -->
+<div class="chart-card">
+  <div class="chart-title">CONNECTION SPEED</div>
+  <div id="connectionSpeedChart" class="chart-container"></div>
+</div>
+
+<div class="chart-card">
+  <div class="chart-title">API RESPONSE TIME</div>
+  <div id="responseTimeChart" class="chart-container"></div>
+</div>
+
+<div class="chart-card wide">
+  <div class="chart-title">MESSAGE RATE (LAST 30 MIN)</div>
+  <div id="messageRateChart" class="chart-container"></div>
+</div>
+
+<div class="chart-card">
+  <div class="chart-title">USER ACTIVITY HEATMAP</div>
+  <div id="userHeatmapChart" class="chart-container"></div>
+</div>
+
+<div class="chart-card wide">
+  <div class="chart-title">ERROR TIMELINE</div>
+  <div id="errorTimelineChart" class="chart-container"></div>
+</div>
+
+<div class="chart-card">
+  <div class="chart-title">INSTANCE LOAD</div>
+  <div id="instanceLoadChart" class="chart-container"></div>
+</div>
+
+<!-- Add this new info card -->
+<div class="info-card">
+  <div class="info-title">PERFORMANCE METRICS</div>
+  <div class="info-line">Avg Response: <span id="avgResponse">-</span>ms</div>
+  <div class="info-line">Peak Load: <span id="peakLoad">-</span></div>
+  <div class="info-line">Msg/Min: <span id="msgPerMin">-</span></div>
+  <div class="info-line">Data Throughput: <span id="dataThroughput">-</span>MB</div>
+  <div class="info-line">Cache Hit Rate: <span id="cacheHitRate">-</span>%</div>
+  <div class="info-line">DB Queries: <span id="dbQueries">-</span>/min</div>
+</div>
         <!-- System Info -->
         <div class="info-card">
           <div class="info-title">SYSTEM STATUS</div>
