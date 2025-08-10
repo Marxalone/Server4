@@ -191,9 +191,9 @@ const cleanupInactiveInstances = async () => {
 };
 
 // Run maintenance every hour
-setInterval(ensurePersistentData, 3600000);
+setInterval(ensurePersistentData, 172800000);
 // Run cleanup every 6 hours
-setInterval(cleanupInactiveInstances, 6 * 3600000);
+setInterval(cleanupInactiveInstances, 6 * 172800000);
 
 // Helper functions
 function updateConnectionStats(db, now) {
