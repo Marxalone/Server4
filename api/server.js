@@ -70,7 +70,7 @@ const limiter = rateLimit({
   windowMs: CONFIG.RATE_LIMIT.windowMs,
   max: CONFIG.RATE_LIMIT.max
 });
-app.use(limiter);
+
 
 
 // Middleware setup
